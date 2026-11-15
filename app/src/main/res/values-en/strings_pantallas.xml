@@ -207,7 +207,9 @@
 	<string name="braille_linea_desconectada">Braille display disconnected</string>
 	<string name="braille_linea_buscando">Looking for braille displays</string>
 	<string name="braille_linea_ninguna">No braille display found. Plug it in over USB or pair it over Bluetooth in the system settings and try again.</string>
-	<string name="braille_linea_no_disponible">Braille displays need Android 15 or later</string>
+	<string name="braille_linea_no_disponible">On this Android version, only Seika displays over USB; other braille displays need Android 15 or later. Tiresias connects by itself when you plug it in.</string>
+	<string name="braille_linea_ninguna_antigua">No Seika display found over USB. Other braille displays need Android 15 or later.</string>
+	<string name="braille_linea_permiso_usb">Android is asking whether Tiresias can use the braille display. Accept it to connect it.</string>
 	<string name="braille_linea_permiso_bt">For Bluetooth displays, give Tiresias the nearby devices permission in Settings, Braille</string>
 	<!-- Manual: reference tables (built from the user's own assignments) -->
 	<string name="man_tabla_gestos">Gestures and what they do</string>

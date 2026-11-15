@@ -37,8 +37,8 @@ android {
 		// versión posterior (gestos de varios dedos, capturas, braille HID...) se comprueba al usarlo.
 		minSdk = 24
 		targetSdk = 37
-		versionCode = 16
-		versionName = "1.0.14"
+		versionCode = 17
+		versionName = "1.0.15"
 
 		buildConfigField("String", "URL_ACTUALIZACIONES", "\"$urlActualizaciones\"")
 		buildConfigField("String", "REPO_GITHUB", "\"$repoGithub\"")
@@ -190,7 +190,7 @@ dependencies {
 	// Reconocimiento de texto (PP-OCRv5) y voces neuronales (Piper) sin Play Services: ONNX Runtime (MIT)
 	implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 	// IA descargable dentro de Tiresias (Gemma 4), como en Lector Universal: LiteRT-LM (Apache 2.0), solo 64 bits
-	implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.1")
+	implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
 	// Órdenes por voz y dictado sin conexión: Vosk (Apache 2.0)
 	implementation("com.alphacephei:vosk-android:0.3.75")
 

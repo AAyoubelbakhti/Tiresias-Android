@@ -169,7 +169,48 @@ class TecladoLinea(private val acordes: () -> Map<Int, Accion> = { ACORDES }) {
 			Puntos.de("78") to Accion.PRIMERO_BRAILLE, // la voz se calla: todo en la línea
 		)
 
-		private val ESPACIOS = setOf(UsosBraille.ESPACIO, UsosBraille.ESPACIO_IZQUIERDO, UsosBraille.ESPACIO_DERECHO)
+		/** (La tecla de borrar de los anotadores Seika hace de espacio con puntos, como en su controlador de NVDA.) */
+		private val ESPACIOS = setOf(UsosBraille.ESPACIO, UsosBraille.ESPACIO_IZQUIERDO, UsosBraille.ESPACIO_DERECHO, UsosSeika.RETROCESO)
+
+		private fun h(a: Accion) = OrdenLinea.Hacer(a)
+
+		/**
+		 * Teclas y combinaciones que no son de puntos: las de las líneas Seika (K1 a K8; en el manual,
+		 * «Líneas Seika») y los dos botones de desplazar a la vez. Mandan sobre todo lo demás.
+		 */
+		val PROPIAS: Map<Set<Int>, OrdenLinea> = with(UsosSeika) {
+			mapOf(
+				// Líneas Seika de 40 y 80 celdas: K1 y K8 a los lados de las celdas, K2 y K3 la báscula izquierda,
+				// K4 y K5 las teclas largas del centro, K6 y K7 la báscula derecha
+				setOf(K1) to OrdenLinea.Desplazar(false),
+				setOf(K8) to OrdenLinea.Desplazar(true),
+				setOf(K2) to h(Accion.ANTERIOR),
+				setOf(K3) to h(Accion.SIGUIENTE),
+				setOf(K6) to h(Accion.CONTROL_ANTERIOR),
+				setOf(K7) to h(Accion.CONTROL_SIGUIENTE),
+				setOf(K4) to h(Accion.ATRAS),
+				setOf(K5) to h(Accion.ACTIVAR),
+				setOf(K4, K5) to h(Accion.INICIO),
+				setOf(K6, K7) to h(Accion.SELECTOR_SIGUIENTE),
+				setOf(K2, K3) to h(Accion.LEER_DESDE_AQUI),
+				setOf(K1, K8) to h(Accion.MENU_TIRESIAS),
+				setOf(K1, K2) to h(Accion.PRIMERO),
+				setOf(K1, K3) to h(Accion.ULTIMO),
+				setOf(K8, K2) to h(Accion.NOTIFICACIONES),
+				setOf(K8, K3) to h(Accion.MENU_ACCIONES),
+				setOf(K4, K2) to h(Accion.PAUSAR_VOZ),
+				setOf(K4, K3) to h(Accion.DONDE_ESTOY),
+				// Anotadores Seika: la tecla de borrar sola y la palanca derecha
+				setOf(RETROCESO) to OrdenLinea.Borrar,
+				setOf(DERECHA_ARRIBA) to h(Accion.CONTROL_ANTERIOR),
+				setOf(DERECHA_ABAJO) to h(Accion.CONTROL_SIGUIENTE),
+				setOf(DERECHA_IZQUIERDA) to h(Accion.SELECTOR_ANTERIOR),
+				setOf(DERECHA_DERECHA) to h(Accion.SELECTOR_SIGUIENTE),
+				setOf(DERECHA_CENTRO) to h(Accion.ATRAS),
+				// Los dos botones de desplazar a la vez (los del anotador y los de cualquier línea HID)
+				setOf(UsosBraille.DESPLAZAR_IZQUIERDA, UsosBraille.DESPLAZAR_DERECHA) to h(Accion.INICIO),
+			)
+		}
 
 		private val TECLAS_SOLAS: Map<Int, OrdenLinea> = mapOf(
 			UsosBraille.DESPLAZAR_IZQUIERDA to OrdenLinea.Desplazar(false),
@@ -213,6 +254,7 @@ class TecladoLinea(private val acordes: () -> Map<Int, Accion> = { ACORDES }) {
 			val usos = teclas.map { it.uso }.toSet()
 			// Una tecla de encaminamiento sola
 			teclas.singleOrNull()?.takeIf { it.uso == UsosBraille.ENCAMINAMIENTO }?.let { return OrdenLinea.Encaminar(it.celda) }
+			PROPIAS[usos]?.let { return it }
 			if (usos.size == 1) TECLAS_SOLAS[usos.first()]?.let { return it }
 			val espacio = usos.any { it in ESPACIOS }
 			val otras = usos.filter { it !in ESPACIOS }

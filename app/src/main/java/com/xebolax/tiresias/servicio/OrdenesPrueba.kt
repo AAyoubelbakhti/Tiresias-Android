@@ -37,6 +37,11 @@ class OrdenesPrueba(private val alGesto: (Gesto) -> Unit, private val alAccion: 
 			com.xebolax.tiresias.base.Ajustes(c).p.edit().putString(clave, valor).apply()
 			ServicioTiresias.instancia?.recargarAjustes()
 		}
+		// Un ajuste de sí o no: --es clave escritura_rapida --ez logico true
+		if (c != null && clave != null && i.hasExtra("logico")) {
+			com.xebolax.tiresias.base.Ajustes(c).p.edit().putBoolean(clave, i.getBooleanExtra("logico", false)).apply()
+			ServicioTiresias.instancia?.recargarAjustes()
+		}
 		// Cuelga un hilo un minuto, para probar el vigilante: --es colgar lector (o principal)
 		i.getStringExtra("colgar")?.let { h ->
 			val espera = Runnable { android.os.SystemClock.sleep(60_000) }

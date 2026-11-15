@@ -40,15 +40,20 @@ import java.util.concurrent.TimeUnit
 object ModeloLocal {
 
 	/** Un modelo del catálogo: archivo en Hugging Face (litert-community), tamaño y SHA-256 publicados. */
-	data class Modelo(val id: String, val nombre: Int, val repo: String, val archivo: String, val tamano: Long, val sha256: String, val memoriaGb: Int, val chip: String? = null) {
-		val url: String get() = "https://huggingface.co/litert-community/$repo/resolve/main/$archivo"
+	data class Modelo(val id: String, val nombre: Int, val repo: String, val archivo: String, val tamano: Long, val sha256: String, val memoriaGb: Int, val chip: String? = null, val revision: String = "main") {
+		/**
+		 * Con la revisión fijada (la que tiene el archivo con este tamaño y esta huella): Hugging Face cambia a
+		 * veces los archivos de «main» (el 08-11-2026 rehízo muchos modelos de litert-community) y la descarga,
+		 * que se comprueba por el tamaño, se daba por mala. Revisiones sacadas de Backtalk.
+		 */
+		val url: String get() = "https://huggingface.co/litert-community/$repo/resolve/$revision/$archivo"
 	}
 
 	val CATALOGO = listOf(
 		Modelo("e2b", R.string.modelo_e2b, "gemma-4-E2B-it-litert-lm", "gemma-4-E2B-it.litertlm", 2_588_147_712L,
-			"181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", 6),
+			"181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", 6, revision = "3d48132a00cf76de57d926de30f5c5c5ed9b8c0d"),
 		Modelo("e4b", R.string.modelo_e4b, "gemma-4-E4B-it-litert-lm", "gemma-4-E4B-it.litertlm", 3_659_530_240L,
-			"0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0", 12),
+			"0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0", 12, revision = "71064b01bd5e2bfd9a5f9dd52df86ae4800138c1"),
 		Modelo("e2b_tensor_g5", R.string.modelo_tensor_g5, "gemma-4-E2B-it-litert-lm", "gemma-4-E2B-it_Google_Tensor_G5.litertlm", 3_113_545_589L,
 			"af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc", 8, chip = "G5"),
 		Modelo("e2b_tensor_g6", R.string.modelo_tensor_g6, "gemma-4-E2B-it-litert-lm", "gemma-4-E2B-it_Google_Tensor_G6.litertlm", 3_313_938_293L,
@@ -181,6 +186,8 @@ object ModeloLocal {
 		val t = Idioma.envolver(c)
 		if (estado(c) != Estado.DESCARGADO) throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_falta))
 		val conectado = CountDownLatch(1)
+		val listo = CountDownLatch(1)
+		val cerrado = java.util.concurrent.atomic.AtomicBoolean(false)
 		var mensajero: Messenger? = null
 		val conexion = object : ServiceConnection {
 			override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -188,22 +195,31 @@ object ModeloLocal {
 				conectado.countDown()
 			}
 
+			// El proceso de la IA se ha cerrado a medias (casi siempre lo cierra Android por memoria): se dice ya,
+			// en vez de esperar tres minutos a una respuesta que no va a llegar
 			override fun onServiceDisconnected(name: ComponentName?) {
 				mensajero = null
+				cerrado.set(true)
+				listo.countDown()
 			}
 		}
 		val app = c.applicationContext
-		if (!app.bindService(Intent(app, ServicioIALocal::class.java), conexion, Context.BIND_AUTO_CREATE)) {
+		// BIND_IMPORTANT: el proceso de la IA sube a la prioridad del lector mientras responde (si no, Android y
+		// los ahorros de batería de algunas marcas lo dejan en segundo plano, lento o congelado)
+		if (!app.bindService(Intent(app, ServicioIALocal::class.java), conexion, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)) {
 			throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_error, "bind"))
 		}
 		try {
 			if (!conectado.await(10, TimeUnit.SECONDS)) throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_error, "timeout"))
-			val listo = CountDownLatch(1)
 			var respuesta: String? = null
 			var error: String? = null
+			var libre = 0L
+			var necesita = 0L
 			val receptor = Messenger(Handler(hiloRespuestas.looper) { m ->
 				respuesta = m.data.getString(ServicioIALocal.RESPUESTA)
 				error = m.data.getString(ServicioIALocal.ERROR)
+				libre = m.data.getLong(ServicioIALocal.LIBRE)
+				necesita = m.data.getLong(ServicioIALocal.NECESITA)
 				listo.countDown()
 				true
 			})
@@ -222,8 +238,24 @@ object ModeloLocal {
 				replyTo = receptor
 			}
 			mensajero?.send(m) ?: throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_error, "send"))
-			if (!listo.await(ESPERA_MS, TimeUnit.MILLISECONDS)) throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_lenta))
-			error?.let { throw AsistenteIA.ErrorIA(if (it == ServicioIALocal.SIN_MEMORIA) t.getString(R.string.ia_local_memoria) else t.getString(R.string.ia_local_error, it)) }
+			if (!listo.await(ESPERA_MS, TimeUnit.MILLISECONDS)) {
+				// Se cierra el proceso: si no, el modelo seguiría ocupando el procesador y la memoria con esta pregunta,
+				// y la siguiente esperaría detrás de ella
+				Registro.w(ETIQUETA, "La IA descargada no ha respondido en ${ESPERA_MS / 1000} s: se cierra su proceso")
+				matarProceso(app)
+				throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_lenta))
+			}
+			if (cerrado.get() && respuesta == null && error == null) {
+				Registro.w(ETIQUETA, "El proceso de la IA se cerró mientras respondía")
+				throw AsistenteIA.ErrorIA(t.getString(R.string.ia_local_memoria))
+			}
+			error?.let {
+				throw AsistenteIA.ErrorIA(when (it) {
+					ServicioIALocal.SIN_MEMORIA -> t.getString(R.string.ia_local_memoria)
+					ServicioIALocal.POCA_MEMORIA -> t.getString(R.string.ia_local_poca_memoria, gb(libre), gb(necesita))
+					else -> t.getString(R.string.ia_local_error, it)
+				})
+			}
 			return respuesta.orEmpty()
 		} catch (e: android.os.DeadObjectException) {
 			// El proceso de la IA se cerró (casi siempre, por memoria): el lector sigue bien
@@ -232,6 +264,17 @@ object ModeloLocal {
 		} finally {
 			runCatching { app.unbindService(conexion) }
 		}
+	}
+
+	/** Unos bytes en gigas con un decimal («1,4»), en el idioma de Tiresias. */
+	private fun gb(bytes: Long): String = String.format(java.util.Locale.getDefault(), "%.1f", bytes / 1_073_741_824.0)
+
+	/** Cierra el proceso `:ia` (es de Tiresias: Android deja cerrar los procesos propios). */
+	private fun matarProceso(c: Context) {
+		runCatching {
+			val am = c.getSystemService(ActivityManager::class.java)
+			am?.runningAppProcesses?.firstOrNull { it.processName == c.packageName + ":ia" }?.let { android.os.Process.killProcess(it.pid) }
+		}.onFailure { Registro.w(ETIQUETA, "No se pudo cerrar el proceso de la IA", it) }
 	}
 
 	private const val ETIQUETA = "ModeloLocal"

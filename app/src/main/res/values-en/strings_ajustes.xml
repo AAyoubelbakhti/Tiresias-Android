@@ -196,7 +196,7 @@
 	<string name="aj_seccion_braille">Braille</string>
 	<string name="aj_seccion_braille_res">Braille displays, braille table and on-screen braille keyboard</string>
 	<string name="aj_braille_linea">Use braille displays</string>
-	<string name="aj_braille_linea_res">Over USB or Bluetooth, on Android 15 or later. Tiresias connects by itself when you plug in or turn on the display.</string>
+	<string name="aj_braille_linea_res">Over USB or Bluetooth on Android 15 or later; Seika displays over USB on any Android. Tiresias connects by itself when you plug in or turn on the display.</string>
 	<string name="aj_braille_buscar">Find braille display</string>
 	<string name="aj_braille_buscar_res">Looks through USB devices and paired Bluetooth devices and connects to the display</string>
 	<string name="aj_braille_bluetooth">Permission for Bluetooth displays</string>
@@ -332,7 +332,9 @@
 	<string name="aj_volumen_deslizadores">Volume keys on sliders</string>
 	<string name="aj_volumen_deslizadores_res">With a slider focused, the volume keys raise and lower its value</string>
 	<string name="aj_escribir_al_levantar">Type when lifting your finger</string>
-	<string name="aj_escribir_al_levantar_res">On the on-screen keyboard, explore to the key and lift your finger to type it, with no double tap</string>
+	<string name="aj_escribir_al_levantar_res">On the on-screen keyboard, explore to the key and lift your finger to type it, with no double tap. If you turn it off, you type by double tapping the chosen key</string>
+	<string name="aj_escritura_rapida">Fast typing on the on-screen keyboard</string>
+	<string name="aj_escritura_rapida_res">When you touch the keyboard, the key is spoken at once, without waiting to see whether it is a gesture, and it is typed when you lift your finger. There are no gestures or double tap over the keyboard: do gestures outside it. Android 11 or later</string>
 	<string name="aj_sonido_espera">Sound while the AI is thinking</string>
 	<string name="aj_sonido_espera_res">A soft sound every three seconds until the answer arrives (also when recognizing text)</string>
 	<string name="aj_aviso_espera">Say when the AI is slow</string>

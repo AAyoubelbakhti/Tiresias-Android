@@ -22,7 +22,9 @@ import java.io.File
  * alguien conectado.
  */
 class ServicioIALocal : Service() {
-	private val hilo = HandlerThread("tiresias-ia", Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
+	// Prioridad normal, no de fondo: en Android, un hilo de fondo (y los que crea el modelo, que la heredan) va a los
+	// núcleos lentos, y en algunos Samsung solo a uno o dos. Con la de fondo, Gemma tardaba tanto que no acababa nunca
+	private val hilo = HandlerThread("tiresias-ia", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
 	private var motor: com.google.ai.edge.litertlm.Engine? = null
 	private var rutaCargada = ""
 	private var gpuCargada = false
@@ -49,20 +51,26 @@ class ServicioIALocal : Service() {
 
 	private fun cargar(ruta: String, gpu: Boolean): com.google.ai.edge.litertlm.Engine {
 		motor?.let { if (ruta == rutaCargada && gpu == gpuCargada) return it else cerrar() }
+		comprobarMemoria(File(ruta).length())
 		val cache = File(cacheDir, "litertlm").apply { mkdirs() }.absolutePath
+		val especulativa = especulativa(ruta)
 		fun crear(conGpu: Boolean): com.google.ai.edge.litertlm.Engine {
 			val backend = if (conGpu) com.google.ai.edge.litertlm.Backend.GPU() else com.google.ai.edge.litertlm.Backend.CPU()
 			val config = com.google.ai.edge.litertlm.EngineConfig(
 				modelPath = ruta,
 				backend = backend,
 				visionBackend = backend,
-				maxNumTokens = 8192,
+				// 4096 de contexto sobran para describir una imagen o una conversación corta, y la memoria que
+				// reserva el modelo crece con él: con 8192, un móvil de 6 u 8 GB acababa tirando de la memoria de
+				// intercambio y la respuesta tardaba más de un minuto (Backtalk lo midió en un Pixel 9a)
+				maxNumTokens = 4096,
 				maxNumImages = 1,
 				cacheDir = cache,
 			)
-			return com.google.ai.edge.litertlm.Engine(config).also { it.initialize() }
+			return crearMotor(config, especulativa)
 		}
 		// La tarjeta gráfica es más rápida pero su controlador falla en algunos móviles: si falla, procesador
+		val desde = android.os.SystemClock.uptimeMillis()
 		val m = if (!gpu) crear(false) else try {
 			crear(true)
 		} catch (e: Throwable) {
@@ -73,11 +81,42 @@ class ServicioIALocal : Service() {
 		motor = m
 		rutaCargada = ruta
 		gpuCargada = gpu
+		Registro.i(ETIQUETA, "Modelo cargado en ${android.os.SystemClock.uptimeMillis() - desde} ms (${if (gpu) "tarjeta gráfica" else "procesador"}, ${Runtime.getRuntime().availableProcessors()} núcleos)")
 		return m
 	}
 
+	/**
+	 * Gemma 4 trae una cabeza que predice varias palabras a la vez (decodificación especulativa): con ella, en un
+	 * Galaxy S25, Backtalk midió un 30 % más rápido. El motor falla si se pide con un modelo que no la tiene, así
+	 * que se pregunta antes al archivo; null si no se sabe (el motor hace lo que diga el modelo).
+	 */
+	private fun especulativa(ruta: String): Boolean? = runCatching {
+		com.google.ai.edge.litertlm.ModelInfo.from(ruta).use { (it as? com.google.ai.edge.litertlm.ModelInfo.Llm)?.hasSpeculativeDecodingSupport() }
+	}.onFailure { Registro.i(ETIQUETA, "No se pudo saber qué admite el modelo: ${it.javaClass.simpleName}") }.getOrNull()
+
+	@OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
+	private fun crearMotor(config: com.google.ai.edge.litertlm.EngineConfig, especulativa: Boolean?): com.google.ai.edge.litertlm.Engine {
+		com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = especulativa
+		return com.google.ai.edge.litertlm.Engine(config).also { it.initialize() }
+	}
+
+	/**
+	 * Antes de cargar: si Android dice que queda poca memoria libre, el modelo no se carga. Cargado así, Android
+	 * empezaba a cerrar apps y a tirar de la memoria de intercambio, y la respuesta no llegaba nunca («se queda
+	 * pensando»). Se pide al menos la mitad del tamaño del modelo libre (el archivo se lee a trozos desde el disco).
+	 */
+	private fun comprobarMemoria(bytesModelo: Long) {
+		val info = android.app.ActivityManager.MemoryInfo()
+		getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(info) ?: return
+		Registro.i(ETIQUETA, "Memoria libre: ${info.availMem / MB} MB de ${info.totalMem / MB} MB; el modelo ocupa ${bytesModelo / MB} MB")
+		if (info.lowMemory || info.availMem < bytesModelo / 2) throw PocaMemoria(info.availMem, bytesModelo)
+	}
+
+	private class PocaMemoria(val libre: Long, val necesita: Long) : Exception("Poca memoria libre")
+
 	private fun responder(datos: Bundle, destino: Messenger?) {
 		val r = Bundle()
+		val desde = android.os.SystemClock.uptimeMillis()
 		try {
 			val m = cargar(datos.getString(MODELO).orEmpty(), datos.getBoolean(GPU))
 			val textos = datos.getStringArray(TEXTOS).orEmpty()
@@ -99,6 +138,12 @@ class ServicioIALocal : Service() {
 				res.contents.contents.filterIsInstance<com.google.ai.edge.litertlm.Content.Text>().joinToString("") { it.text }
 			}
 			r.putString(RESPUESTA, respuesta)
+			// Solo el tiempo y el largo, nunca el texto
+			Registro.i(ETIQUETA, "Respuesta en ${android.os.SystemClock.uptimeMillis() - desde} ms (${respuesta.length} caracteres, ${if (datos.getString(IMAGEN) != null) "con" else "sin"} imagen)")
+		} catch (e: PocaMemoria) {
+			r.putString(ERROR, POCA_MEMORIA)
+			r.putLong(LIBRE, e.libre)
+			r.putLong(NECESITA, e.necesita)
 		} catch (e: OutOfMemoryError) {
 			cerrar()
 			r.putString(ERROR, SIN_MEMORIA)
@@ -124,5 +169,9 @@ class ServicioIALocal : Service() {
 		const val RESPUESTA = "respuesta"
 		const val ERROR = "error"
 		const val SIN_MEMORIA = "sin_memoria"
+		const val POCA_MEMORIA = "poca_memoria"
+		const val LIBRE = "libre"
+		const val NECESITA = "necesita"
+		private const val MB = 1_048_576L
 	}
 }

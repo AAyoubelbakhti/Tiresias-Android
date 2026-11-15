@@ -54,7 +54,8 @@
 	<string name="ia_local_descarga_titulo">Downloading %1$s</string>
 	<string name="ia_local_falta">The AI model isn\'t downloaded</string>
 	<string name="ia_local_error">The downloaded AI failed (%1$s)</string>
-	<string name="ia_local_lenta">The downloaded AI is taking too long</string>
+	<string name="ia_local_lenta">The downloaded AI was taking too long and has been stopped. With little free memory the phone gets very slow: close other apps or use a cloud AI.</string>
+	<string name="ia_local_poca_memoria">There is not enough free memory for the downloaded AI: %1$s GB left and the model needs about %2$s. Close other apps and try again, or use a cloud AI.</string>
 	<string name="ia_local_memoria">Not enough memory for the downloaded AI. Tiresias keeps working; try a smaller model or close other apps.</string>
 	<string name="modelo_e2b">Gemma 4 E2B (any powerful phone)</string>
 	<string name="modelo_e4b">Gemma 4 E4B (more capable, needs lots of memory)</string>

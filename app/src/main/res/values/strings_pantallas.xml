@@ -213,7 +213,9 @@
 	<string name="braille_linea_desconectada">Línea braille desconectada</string>
 	<string name="braille_linea_buscando">Buscando líneas braille</string>
 	<string name="braille_linea_ninguna">No se ha encontrado ninguna línea braille. Conéctala por USB o emparéjala por Bluetooth en los ajustes del sistema y vuelve a probar.</string>
-	<string name="braille_linea_no_disponible">Las líneas braille necesitan Android 15 o posterior</string>
+	<string name="braille_linea_no_disponible">Con esta versión de Android, solo las líneas Seika por USB; las demás líneas braille necesitan Android 15 o posterior. Tiresias se conecta solo al enchufarla.</string>
+	<string name="braille_linea_ninguna_antigua">No se ha encontrado ninguna línea Seika por USB. Las demás líneas braille necesitan Android 15 o posterior.</string>
+	<string name="braille_linea_permiso_usb">Android pregunta si Tiresias puede usar la línea braille. Acéptalo para conectarla.</string>
 	<string name="braille_linea_permiso_bt">Para las líneas Bluetooth, da a Tiresias el permiso de dispositivos cercanos en Ajustes, Braille</string>
 	<!-- Manual: tablas de referencia (salen de las asignaciones del usuario) -->
 	<string name="man_tabla_gestos">Gestos y lo que hacen</string>

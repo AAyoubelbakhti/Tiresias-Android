@@ -203,6 +203,19 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		voz.puntuacionPerfil = perfiles.puntuacion()
 		descritos.clear()
 		if (brailleListo) braille.recargarAjustes()
+		// La escritura rápida y el toque directo en el teclado se aplican ya, con el teclado a la vista
+		zonasDelTeclado(runCatching { servicio.windows }.getOrNull()?.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD })
+	}
+
+	/** Las zonas especiales encima del teclado en pantalla (null: no está a la vista). */
+	private fun zonasDelTeclado(teclado: AccessibilityWindowInfo?) {
+		val zona = teclado?.let { android.graphics.Rect().also { r -> it.getBoundsInScreen(r) } }
+		if (ajustes.toqueDirectoTeclado) gestos.zonaDirecta(zona)
+		// Con «Escritura rápida», Android explora al momento encima del teclado, sin esperar a ver si el toque es un
+		// gesto (el «retraso del foco al escribir» de TalkBack); ahí no hay gestos y se escribe al levantar el dedo
+		// (no con el teclado braille de Tiresias, que tiene su propia superficie y sus gestos)
+		val propio = runCatching { teclado?.root?.packageName?.toString() == servicio.packageName }.getOrDefault(false)
+		gestos.zonaSinGestos(if (ajustes.escrituraRapida && !ajustes.toqueDirectoTeclado && !propio) zona else null)
 	}
 
 	/** La voz y los sonidos por el volumen multimedia ([multimedia]) o por el de accesibilidad. */
@@ -371,6 +384,21 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 					appGrabando = foco?.packageName?.toString()
 					grabarDesde = momentoUsuario
 				}
+				// Escritura rápida: si se vuelve a tocar el teclado muy deprisa, Android puede no mandar el fin del toque
+				// anterior (lo cancela por si era un doble toque) y esa letra se perdería: se escribe ahora
+				val pendiente = teclaExplorada
+				val toqueAnterior = inicioToque
+				if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d("TiresiasEscritura", "Empieza un toque: pendiente=${pendiente != null} fin=$finDeToqueLlego")
+				if (pendiente != null && ajustes.escrituraRapida && !finDeToqueLlego) {
+					// (un momento después: si el teclado la escribe él solo al levantar el dedo, ya habrá cambiado el texto)
+					manejador.postDelayed({
+						if (textoCambiadoEn < toqueAnterior && Nodos.vivo(pendiente)) {
+							sonidos.tocar(Sonido.TECLA)
+							pulsar(pendiente)
+						}
+					}, ESPERA_TECLA_PROPIA_MS)
+				}
+				finDeToqueLlego = false
 				teclaExplorada = null
 				ultimoExplorado = null
 				cancelarToqueActiva()
@@ -386,6 +414,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 				// usuario: ni cuentan como un dedo atascado ni activan nada con «un toque activa». Se decide al
 				// empezar el toque: el final puede llegar tarde (con el móvil ocupado) y ya no se distinguiría
 				if (!toquePropio) {
+					finDeToqueLlego = true
 					vigilarToqueAtascado()
 					alLevantarDedo()
 				}
@@ -401,6 +430,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			AccessibilityEvent.TYPE_VIEW_SELECTED -> alSeleccionar(e)
 			AccessibilityEvent.TYPE_VIEW_FOCUSED -> alEnfocarEntrada(e)
 			AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+				textoCambiadoEn = SystemClock.uptimeMillis()
+				if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d("TiresiasEscritura", "Texto cambiado")
 				edicion.alCambiarTexto(e)
 				if (brailleListo) braille.alCambiarEdicion(e.source)
 			}
@@ -449,9 +480,18 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		teclaExplorada = null
 		ultimoExplorado = null
-		if (tecla != null && ajustes.escribirAlLevantar && Nodos.vivo(tecla)) {
-			sonidos.tocar(Sonido.TECLA)
-			pulsar(tecla)
+		if (tecla != null && (ajustes.escribirAlLevantar || ajustes.escrituraRapida) && Nodos.vivo(tecla)) {
+			// El teclado de Google (y el de Android) escriben ellos solos la tecla sobre la que se levanta el dedo, y el
+			// cambio del texto llega unos 70 ms después del fin del toque: se espera un poco y, si el texto ha cambiado
+			// durante este toque, no se pulsa otra vez (salía cada letra dos veces). Los demás teclados, sí
+			val desde = inicioToque
+			manejador.postDelayed({
+				if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d("TiresiasEscritura", "Fin del toque: escrita por el teclado=${textoCambiadoEn >= desde}")
+				if (textoCambiadoEn < desde && Nodos.vivo(tecla)) {
+					sonidos.tocar(Sonido.TECLA)
+					pulsar(tecla)
+				}
+			}, ESPERA_TECLA_PROPIA_MS)
 			return
 		}
 		// Activar al levantar el dedo: en los botones de la barra de navegación o en toda la pantalla
@@ -470,6 +510,11 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		sonidos.tocar(Sonido.ACTIVAR)
 		pulsar(explorado)
 	}
+
+	/** Si ha llegado el fin del toque anterior (para no perder una tecla con la escritura rápida). */
+	private var finDeToqueLlego = true
+	/** Cuándo cambió por última vez el texto de un campo (para no escribir dos veces una tecla que el teclado ya ha escrito). */
+	private var textoCambiadoEn = 0L
 
 	/** El foco al empezar a tocar, cuándo, y si el dedo ha pasado por otro elemento (para «un toque activa»). */
 	private var focoAlTocar: AccessibilityNodeInfo? = null
@@ -1607,10 +1652,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		if (teclado == null && hayTeclado) sinTecladoDesde = ahora
 		hayTeclado = teclado != null
 		// Con «Toque directo en el teclado», los toques en el teclado en pantalla pasan directos a él
-		if (ajustes.toqueDirectoTeclado) {
-			val zona = teclado?.let { android.graphics.Rect().also { r -> it.getBoundsInScreen(r) } }
-			gestos.zonaDirecta(zona)
-		}
+		zonasDelTeclado(teclado)
 	}
 
 	// CONTENT_CHANGE_TYPE_STATE_DESCRIPTION (Android 11) es una constante: antes nunca llega ese tipo, sin fallo
@@ -1954,6 +1996,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 
 		/** Un toque que dura menos que esto es un toque (no explorar con el dedo). */
 		private const val TOQUE_CORTO_MS = 350L
+		/** Lo que se espera al escribir al levantar el dedo, a ver si el teclado escribe él solo la tecla. */
+		private const val ESPERA_TECLA_PROPIA_MS = 180L
 		/** Lo que se espera tras un toque por si llega el segundo de un doble toque. */
 		private const val ESPERA_DOBLE_TOQUE_MS = 400L
 

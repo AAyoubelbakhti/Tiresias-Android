@@ -226,6 +226,24 @@ class GestosTiresias(private val lector: Lector) {
 			.onFailure { Registro.w(ETIQUETA, "No se pudo poner la zona de toque directo de la app", it) }
 	}
 
+	/** La zona sin detección de gestos puesta ahora (la de la escritura rápida). */
+	private var zonaSinGestosPuesta = Region()
+
+	/**
+	 * Escritura rápida: en [zona] (el teclado en pantalla) Android no busca gestos y empieza a explorar en cuanto
+	 * se toca, sin esperar el tiempo del doble toque. null la quita. Solo Android 11 o posterior.
+	 */
+	fun zonaSinGestos(zona: android.graphics.Rect?) {
+		if (Build.VERSION.SDK_INT < 30) return
+		val r = if (zona != null && !zona.isEmpty) Region(zona) else Region()
+		if (r == zonaSinGestosPuesta) return
+		runCatching {
+			servicio.setGestureDetectionPassthroughRegion(Display.DEFAULT_DISPLAY, r)
+			zonaSinGestosPuesta = r
+			if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d("TiresiasEscritura", "Zona sin gestos: ${r.bounds}")
+		}.onFailure { Registro.w(ETIQUETA, "No se pudo poner la zona de la escritura rápida", it) }
+	}
+
 	/** La zona de paso de toques puesta ahora (para devolverla tras un toque de Tiresias). */
 	@Volatile private var regionPuesta = Region()
 

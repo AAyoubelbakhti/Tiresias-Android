@@ -23,6 +23,12 @@ Este producto incluye software desarrollado por terceros:
   servicio/AltavozEnLlamada.kt) se basa en SpeakerphonePolicy y
   SpeakerphoneInCallService de Backtalk (Apache License 2.0), con cambios.
 
+* El protocolo de las líneas braille Seika (nucleo/braille/Seika.kt y
+  braille/PuertoSeika.kt) está escrito para Tiresias a partir del controlador
+  Seika de BRLTTY (Drivers/Braille/Seika y los adaptadores CP2101 y CP2110,
+  Copyright (C) 1995-2026 The BRLTTY Developers, LGPL-2.1-or-later), sin copiar
+  su código.
+
 * ZXing («Zebra Crossing», Copyright (C) ZXing authors), licencia Apache License
   2.0: los códigos QR y de barras de la pantalla y de las imágenes compartidas.
 

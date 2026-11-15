@@ -1,7 +1,6 @@
 package com.xebolax.tiresias.braille
 
 import android.Manifest
-import android.accessibilityservice.BrailleDisplayController
 import android.app.PendingIntent
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
@@ -13,33 +12,39 @@ import android.content.pm.PackageManager
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
-import androidx.annotation.RequiresApi
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.xebolax.tiresias.R
 import com.xebolax.tiresias.base.Registro
 import com.xebolax.tiresias.lectura.Lector
-import com.xebolax.tiresias.nucleo.braille.LineaHid
 import com.xebolax.tiresias.nucleo.braille.OrdenLinea
 import com.xebolax.tiresias.nucleo.braille.TablaBraille
+import com.xebolax.tiresias.nucleo.braille.TeclaLinea
 import com.xebolax.tiresias.nucleo.braille.TecladoLinea
 import com.xebolax.tiresias.nucleo.braille.VistaLinea
 import com.xebolax.tiresias.voz.Sonido
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /**
- * Una línea braille conectada con BrailleDisplayController (Android 15 o
- * posterior): Android abre el dispositivo HID de la línea, USB o Bluetooth, y
- * Tiresias le escribe las celdas y lee sus teclas. Sin controladores propios
- * ni BRLTTY: vale para cualquier línea que siga la norma HID Braille (las
- * actuales de Freedom Scientific, HumanWare, APH, Orbit, HIMS, Help Tech...).
+ * La línea braille: la busca, se conecta y le pone lo que hay que ver. Hay dos
+ * formas de llegar a ella:
+ * - Las líneas Seika por USB ([PuertoSeika]), en cualquier Android: Tiresias
+ *   habla con su chip directamente.
+ * - Las líneas HID Braille por USB o Bluetooth ([LineasHid]), con
+ *   BrailleDisplayController de Android 15 o posterior.
  *
  * Todo pasa en el hilo del lector. Las teclas se convierten en órdenes
  * ([TecladoLinea]) que hace [Braille].
  */
-@RequiresApi(35)
 class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea) -> Unit, private val alCambiarConexion: () -> Unit) {
 	private val servicio = lector.servicio
-	private val controlador: BrailleDisplayController? = runCatching { servicio.brailleDisplayController }.getOrNull()
 	private val enHilo = Executor { lector.manejador.post(it) }
+	private val usb: UsbManager? = runCatching { servicio.getSystemService(UsbManager::class.java) }.getOrNull()
+	/** Las líneas HID (Android 15 o posterior); null antes. */
+	private val hid: LineasHid? = if (Build.VERSION.SDK_INT >= 35) LineasHid(servicio, enHilo).takeIf { it.disponible } else null
+	/** Abre y prepara las Seika, que bloquea. */
+	private val hiloSeika = Executors.newSingleThreadExecutor { Thread(it, "Tiresias-Seika-abrir") }
 	/** Las combinaciones de la línea, con las que haya cambiado el usuario. */
 	@Volatile private var acordes = TecladoLinea.leerAcordes(lector.ajustes.acordesBraille)
 	private val teclado = TecladoLinea { acordes }
@@ -50,7 +55,8 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 		vista?.puntosCursor = lector.ajustes.puntosCursorBraille
 	}
 
-	private var linea: LineaHid? = null
+	/** La línea de verdad que está conectada. */
+	private var conexion: ConexionLinea? = null
 	var vista: VistaLinea? = null
 		private set
 
@@ -63,17 +69,17 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 	private var mensajeHasta = 0L
 	private val quitarMensaje = Runnable { escribir() }
 
-	val conectada: Boolean get() = linea != null || virtual != null
+	val conectada: Boolean get() = conexion != null || virtual != null
 
 	/** Una línea que es otra app (API): sus celdas y cómo mandarle lo que hay que ver. */
 	private class Virtual(val nombre: String, val celdas: Int, val enviar: (ByteArray) -> Unit)
 	private var virtual: Virtual? = null
 
-	private val celdasLinea: Int get() = linea?.celdas ?: virtual?.celdas ?: 0
+	private val celdasLinea: Int get() = conexion?.celdas ?: virtual?.celdas ?: 0
 
 	/** Otra app hace de línea (un anotador, el programa del fabricante); solo si no hay una línea de verdad. */
 	fun conectarVirtual(nombre: String, celdas: Int, enviar: (ByteArray) -> Unit): Boolean {
-		if (linea != null || celdas !in 1..160) return false
+		if (conexion != null || celdas !in 1..160) return false
 		virtual = Virtual(nombre, celdas, enviar)
 		vista = VistaLinea(celdas).apply { puntosCursor = lector.ajustes.puntosCursorBraille }
 		lector.sonidos.tocar(Sonido.ENCENDIDO)
@@ -102,15 +108,18 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 	}
 
 	fun iniciar() {
-		if (controlador == null) return
+		if (usb == null && hid == null) return
 		val filtro = IntentFilter().apply {
 			addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
 			addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
-			addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
-			addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
 			addAction(PERMISO_USB)
+			if (hid != null) {
+				addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+				addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+			}
 		}
-		runCatching { servicio.registerReceiver(receptor, filtro, Context.RECEIVER_NOT_EXPORTED) }
+		runCatching { ContextCompat.registerReceiver(servicio, receptor, filtro, ContextCompat.RECEIVER_NOT_EXPORTED) }
+			.onFailure { Registro.w(ETIQUETA, "No se pudo escuchar las conexiones de las líneas", it) }
 		lector.manejador.postDelayed({ buscar(false) }, 1500)
 	}
 
@@ -120,46 +129,50 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 	}
 
 	fun desconectar() {
-		runCatching { if (controlador?.isConnected == true) controlador.disconnect() }
-		linea = null
+		conexion?.cerrar()
+		hid?.soltar()
+		conexion = null
 		vista = null
 	}
 
 	/**
-	 * Busca una línea entre los dispositivos USB HID y los Bluetooth emparejados
-	 * y se conecta a la primera que lo sea. [avisar]: dice lo que pasa (cuando
-	 * lo pide el usuario); si no, solo avisa al conectar.
+	 * Busca una línea entre las Seika y los dispositivos USB HID enchufados y
+	 * los Bluetooth emparejados, y se conecta a la primera que lo sea.
+	 * [avisar]: dice lo que pasa (cuando lo pide el usuario); si no, solo avisa al conectar.
 	 */
 	fun buscar(avisar: Boolean) {
-		val c = controlador ?: run {
-			if (avisar) lector.decir(R.string.braille_linea_no_disponible)
-			return
-		}
 		if (conectada || probando) {
-			if (avisar && conectada) lector.decir(R.string.braille_linea_conectada, linea?.celdas ?: 0)
+			if (avisar && conectada) lector.decir(R.string.braille_linea_conectada, celdasLinea)
 			return
 		}
 		avisarBusqueda = avisar
 		candidatos.clear()
 		candidatos.addAll(dispositivosUsb(avisar))
-		candidatos.addAll(dispositivosBluetooth(avisar))
+		if (hid != null) candidatos.addAll(dispositivosBluetooth(avisar))
 		if (candidatos.isEmpty()) {
-			if (avisar) lector.decir(R.string.braille_linea_ninguna)
+			if (avisar) lector.decir(if (hid == null) R.string.braille_linea_ninguna_antigua else R.string.braille_linea_ninguna)
 			return
 		}
 		if (avisar) lector.decir(R.string.braille_linea_buscando)
-		probarSiguiente(c)
+		probarSiguiente()
 	}
 
+	/** Las Seika primero (Tiresias habla con ellas directamente) y luego las HID, si hay BrailleDisplayController. */
 	private fun dispositivosUsb(pedirPermiso: Boolean): List<UsbDevice> {
-		val usb = servicio.getSystemService(UsbManager::class.java) ?: return emptyList()
-		val hid = usb.deviceList.values.filter { d -> (0 until d.interfaceCount).any { d.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_HID } }
-		val conPermiso = hid.filter { usb.hasPermission(it) }
+		val u = usb ?: return emptyList()
+		val todos = runCatching { u.deviceList.values.toList() }.getOrDefault(emptyList())
+		val seika = todos.filter { PuertoSeika.esSeika(it) }
+		val hidUsb = if (hid == null) emptyList() else todos.filter { d -> !PuertoSeika.esSeika(d) && (0 until d.interfaceCount).any { d.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_HID } }
+		val posibles = seika + hidUsb
+		val conPermiso = posibles.filter { u.hasPermission(it) }
 		// Sin permiso, Android pregunta al usuario (una vez por dispositivo); al aceptarlo se vuelve a buscar
 		if (pedirPermiso || conPermiso.isEmpty()) {
-			hid.firstOrNull { !usb.hasPermission(it) }?.let { d ->
-				val pi = PendingIntent.getBroadcast(servicio, 0, Intent(PERMISO_USB).setPackage(servicio.packageName), PendingIntent.FLAG_MUTABLE)
-				runCatching { usb.requestPermission(d, pi) }
+			posibles.firstOrNull { !u.hasPermission(it) }?.let { d ->
+				val banderas = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+				val pi = PendingIntent.getBroadcast(servicio, 0, Intent(PERMISO_USB).setPackage(servicio.packageName), banderas)
+				runCatching { u.requestPermission(d, pi) }.onFailure { Registro.w(ETIQUETA, "No se pudo pedir permiso para el USB", it) }
+				// Lo que sale es una ventana de Android: se avisa para que no pille por sorpresa
+				if (PuertoSeika.esSeika(d)) lector.decir(R.string.braille_linea_permiso_usb)
 			}
 		}
 		return conPermiso
@@ -176,7 +189,15 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 		return emparejados.sortedByDescending { d -> runCatching { d.name }.getOrNull()?.let { NOMBRES.containsMatchIn(it) } == true }
 	}
 
-	private fun probarSiguiente(c: BrailleDisplayController) {
+	/** Lo que pasa con el dispositivo que se está probando; todo en el hilo del lector. */
+	private val oyente = object : LineasHid.Oyente {
+		override fun alConectar(c: ConexionLinea) = this@LineaBraille.alConectar(c)
+		override fun alFallar() = probarSiguiente()
+		override fun alTeclas(t: Set<TeclaLinea>) = this@LineaBraille.alTeclas(t)
+		override fun alDesconectar() = this@LineaBraille.alDesconectar()
+	}
+
+	private fun probarSiguiente() {
 		val d = candidatos.removeFirstOrNull()
 		if (d == null) {
 			probando = false
@@ -184,44 +205,40 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 			return
 		}
 		probando = true
-		val llamada = object : BrailleDisplayController.BrailleDisplayCallback {
-			override fun onConnected(descriptor: ByteArray) = alConectar(c, descriptor)
-			override fun onConnectionFailed(error: Int) {
-				Registro.i(ETIQUETA, "No es una línea braille o no se pudo abrir (error $error)")
-				probarSiguiente(c)
-			}
-			override fun onInput(informe: ByteArray) = alTeclas(informe)
-			override fun onDisconnected() = alDesconectar()
-		}
+		if (d is UsbDevice && PuertoSeika.esSeika(d)) probarSeika(d) else hid?.probar(d, oyente) ?: probarSiguiente()
+	}
+
+	private fun probarSeika(d: UsbDevice) {
+		val u = usb ?: return probarSiguiente()
 		val ok = runCatching {
-			when (d) {
-				is UsbDevice -> c.connect(d, enHilo, llamada)
-				is BluetoothDevice -> {
-					// Los Bluetooth solo se buscan con el permiso, pero puede haberse quitado mientras tanto
-					if (servicio.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) throw SecurityException("Sin permiso de dispositivos cercanos")
-					c.connect(d, enHilo, llamada)
+			hiloSeika.execute {
+				val p = runCatching { PuertoSeika.abrir(u, d) }.onFailure { Registro.w(ETIQUETA, "No se pudo abrir la línea Seika", it) }.getOrNull()
+				val id = p?.let { runCatching { it.identificar() }.onFailure { e -> Registro.w(ETIQUETA, "La línea Seika no contesta", e) }.getOrNull() }
+				lector.manejador.post {
+					if (p == null || id == null) {
+						if (p != null) Registro.i(ETIQUETA, "La línea Seika no ha dicho quién es")
+						p?.cerrar()
+						probarSiguiente()
+						return@post
+					}
+					alConectar(p)
+					p.empezar(
+						alTeclas = { t -> lector.manejador.post { if (conexion === p) alTeclas(t) } },
+						alCortarse = { lector.manejador.post { if (conexion === p) alDesconectar() } },
+					)
 				}
 			}
 		}
-		if (ok.isFailure) {
-			Registro.w(ETIQUETA, "No se pudo probar un dispositivo", ok.exceptionOrNull())
-			probarSiguiente(c)
-		}
+		if (ok.isFailure) probarSiguiente()
 	}
 
-	private fun alConectar(c: BrailleDisplayController, descriptor: ByteArray) {
-		val l = LineaHid.crear(descriptor)
-		if (l == null || l.celdas == 0) {
-			runCatching { c.disconnect() }
-			probarSiguiente(c)
-			return
-		}
+	private fun alConectar(c: ConexionLinea) {
 		probando = false
 		candidatos.clear()
-		linea = l
-		vista = VistaLinea(l.celdas).apply { puntosCursor = lector.ajustes.puntosCursorBraille }
+		conexion = c
+		vista = VistaLinea(c.celdas).apply { puntosCursor = lector.ajustes.puntosCursorBraille }
 		lector.sonidos.tocar(Sonido.ENCENDIDO)
-		lector.decir(R.string.braille_linea_conectada, l.celdas)
+		lector.decir(R.string.braille_linea_conectada, c.celdas)
 		// «Primero braille» se aplica cuando ya se ha dicho que está conectada
 		lector.manejador.postDelayed({ alCambiarConexion() }, 2000)
 		// Lo que tiene el foco, en la línea desde el primer momento
@@ -230,7 +247,8 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 
 	private fun alDesconectar(estabaVirtual: Boolean = false) {
 		val estaba = conectada || estabaVirtual
-		linea = null
+		conexion?.cerrar()
+		conexion = null
 		vista = null
 		probando = false
 		// Lo primero, devolver la voz (si estaba callada por «primero braille»)
@@ -242,12 +260,13 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 	}
 
 	private fun comprobarConexion() {
-		if (conectada && controlador?.isConnected != true) alDesconectar()
+		val c = conexion ?: return
+		if (!c.sigue()) alDesconectar()
 	}
 
-	private fun alTeclas(informe: ByteArray) {
-		val l = linea ?: return
-		teclado.alTeclas(l.teclas(informe))?.let { alOrden(it) }
+	private fun alTeclas(teclas: Set<TeclaLinea>) {
+		if (conexion == null) return
+		teclado.alTeclas(teclas)?.let { alOrden(it) }
 	}
 
 	/** Pone un texto en la línea (con cursor en los campos de texto). */
@@ -295,12 +314,8 @@ class LineaBraille(private val lector: Lector, private val alOrden: (OrdenLinea)
 			runCatching { v.enviar(celdas) }.onFailure { Registro.w(ETIQUETA, "La línea de ${v.nombre} no contesta", it) }
 			return
 		}
-		val l = linea ?: return
-		val c = controlador ?: return
-		runCatching { c.write(l.informe(celdas)) }.onFailure {
-			Registro.w(ETIQUETA, "No se pudo escribir en la línea", it)
-			comprobarConexion()
-		}
+		val c = conexion ?: return
+		if (!c.escribir(celdas)) comprobarConexion()
 	}
 
 	companion object {

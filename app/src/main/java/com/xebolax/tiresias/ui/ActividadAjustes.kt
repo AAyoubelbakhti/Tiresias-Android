@@ -501,10 +501,10 @@ class ActividadAjustes : ActividadBase(), PreferenceFragmentCompat.OnPreferenceS
 				runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS)) }
 				true
 			}
-			if (android.os.Build.VERSION.SDK_INT < 35) {
-				findPreference<Preference>("braille_linea")?.apply { isEnabled = false; summary = getString(R.string.braille_linea_no_disponible) }
-				findPreference<Preference>("braille_buscar")?.isVisible = false
-			}
+			// Antes de Android 15 solo van las Seika por USB (Tiresias habla con su chip); las HID necesitan BrailleDisplayController
+			// La escritura rápida usa la zona sin detección de gestos de Android 11
+			if (android.os.Build.VERSION.SDK_INT < 30) findPreference<Preference>("escritura_rapida")?.isVisible = false
+			if (android.os.Build.VERSION.SDK_INT < 35) findPreference<Preference>("braille_linea")?.summary = getString(R.string.braille_linea_no_disponible)
 			// Claves de IA: se guardan cifradas (Secretos), nunca en las preferencias en claro
 			val secretos = Secretos(c)
 			for ((clave, secreto) in listOf("ia_clave_claude" to Secretos.CLAUDE, "ia_clave_openai" to Secretos.OPENAI, "ia_clave_gemini" to Secretos.GEMINI, "ia_clave_compatible" to Secretos.COMPATIBLE)) {

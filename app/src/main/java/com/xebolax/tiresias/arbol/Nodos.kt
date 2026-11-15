@@ -22,6 +22,10 @@ object Nodos {
 	private const val NIVELES_LECTURA = 9
 	/** La parte de la pantalla que ocupa el marco de una página entera (de alto). */
 	private const val PARTE_PAGINA = 0.6f
+	/** La parte de la pantalla que ocupa de ancho el marco o el velo de una web. */
+	private const val PARTE_ANCHO = 0.8f
+	/** Cuántos nodos se miran como mucho para saber si un marco de página tiene controles muy hondos. */
+	private const val MAXIMO_NODOS_MARCO = 400
 
 	/** El rol de [n] por su clase (como `Role.java` de TalkBack), su rol web y sus propiedades. */
 	fun rol(n: AccessibilityNodeInfo): Rol {
@@ -193,6 +197,8 @@ object Nodos {
 		// Una lista con filas no es una parada por sí misma aunque la app la haga pulsable o mantenible y le ponga
 		// nombre (la de los chats de WhatsApp): son sus filas, como en TalkBack
 		if (esLista(n) && n.childCount > 0) return false
+		// Un velo sin nombre que tapa la página web entera no es un control (CaixaBank)
+		if (accionable(n) && esVeloDePagina(n)) return false
 		if (accionable(n)) return true
 		// Una casilla suelta (sin fila pulsable que la lea) sí es una parada
 		if (n.isCheckable) return !antepasadoQueLee(n)
@@ -259,7 +265,7 @@ object Nodos {
 		var nivel = 0
 		var candidato: AccessibilityNodeInfo? = null
 		while (actual != null && nivel < 15) {
-			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual))) {
+			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual)) && !esVeloDePagina(actual)) {
 				if (accionable(actual) && actual.isVisibleToUser) return actual
 				if (candidato == null && recibeFoco(actual)) candidato = actual
 			}
@@ -322,9 +328,56 @@ object Nodos {
 	 * controles y sus textos, cada uno el suyo.
 	 */
 	private fun esMarcoDePagina(n: AccessibilityNodeInfo, d: Dentro?): Boolean {
-		if (d == null || !d.varios || tieneTexto(n)) return false
-		val alto = android.content.res.Resources.getSystem().displayMetrics.heightPixels
-		return alto > 0 && limites(n).height() >= alto * PARTE_PAGINA
+		if (d == null || tieneTexto(n)) return false
+		val m = android.content.res.Resources.getSystem().displayMetrics
+		val r = limites(n)
+		if (m.heightPixels <= 0 || r.height() < m.heightPixels * PARTE_PAGINA) return false
+		if (d.varios) return true
+		// En una web, los controles del marco pueden estar mucho más hondos de lo que se mira al agrupar: en la app
+		// de CaixaBank (una WebView), el marco pulsable a pantalla completa tiene sus botones y campos diez niveles por
+		// debajo. Se tomaba por un botón: el foco se quedaba en él al tocar y al deslizar, sin decir nada útil
+		return d.controles == 0 && r.width() >= m.widthPixels * PARTE_ANCHO && enWeb(n) && controlHondo(n)
+	}
+
+	/**
+	 * Algo de una web que se pulsa, no dice nada, no tiene nada dentro y tapa casi toda la pantalla: un velo que la
+	 * web pone encima de la página para escuchar los toques (CaixaBank tiene cuatro). No es una parada ni se enfoca
+	 * al explorar: si no, el foco caía en él, mudo, y tapaba lo de debajo.
+	 */
+	fun esVeloDePagina(n: AccessibilityNodeInfo): Boolean {
+		if (n.childCount > 0 || tieneTexto(n) || n.isEditable || n.isCheckable || !accionable(n)) return false
+		val m = android.content.res.Resources.getSystem().displayMetrics
+		val r = limites(n)
+		return m.heightPixels > 0 && r.height() >= m.heightPixels * PARTE_PAGINA && r.width() >= m.widthPixels * PARTE_ANCHO && enWeb(n)
+	}
+
+	/** Si [n] está dentro de una página web (su ventana es una WebView o Chrome, que la da como WebView). */
+	private fun enWeb(n: AccessibilityNodeInfo): Boolean {
+		var p: AccessibilityNodeInfo? = n
+		var nivel = 0
+		while (p != null && nivel < 40) {
+			if (p.className?.toString()?.endsWith("WebView") == true) return true
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return false
+	}
+
+	/** Si dentro de [n], a cualquier profundidad (con un límite de nodos), hay un control visible. */
+	private fun controlHondo(n: AccessibilityNodeInfo): Boolean {
+		var vistos = 0
+		fun buscar(x: AccessibilityNodeInfo, nivel: Int): Boolean {
+			if (nivel > 30) return false
+			for (i in 0 until x.childCount) {
+				if (++vistos > MAXIMO_NODOS_MARCO) return false
+				val h = runCatching { x.getChild(i) }.getOrNull() ?: continue
+				if (!h.isVisibleToUser) continue
+				if (accionable(h) && !esVeloDePagina(h)) return true
+				if (buscar(h, nivel + 1)) return true
+			}
+			return false
+		}
+		return buscar(n, 0)
 	}
 
 	/**

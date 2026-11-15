@@ -439,6 +439,8 @@ class Ajustes(contexto: Context) {
 
 	/** En el teclado en pantalla, los toques pasan directos al teclado (se escribe tocando, sin explorar). */
 	val toqueDirectoTeclado: Boolean get() = logico(Claves.TOQUE_DIRECTO_TECLADO, false)
+	/** Escritura rápida: sobre el teclado en pantalla se explora al momento y se escribe al levantar el dedo (Android 11+). */
+	val escrituraRapida: Boolean get() = logico(Claves.ESCRITURA_RAPIDA, false)
 
 	/** Teclado braille en pantalla: puntos en espejo, qué se dice al escribir y vibrar al poner cada punto. */
 	val brailleEspejo: Boolean get() = logico(Claves.BRAILLE_ESPEJO, false)
@@ -945,6 +947,7 @@ object Claves {
 	const val FOCO_VENTANAS_NUEVAS = "foco_ventanas_nuevas"
 	const val VOZ_MULTIMEDIA = "voz_multimedia"
 	const val TOQUE_DIRECTO_TECLADO = "toque_directo_teclado"
+	const val ESCRITURA_RAPIDA = "escritura_rapida"
 	const val BRAILLE_ESPEJO = "braille_espejo"
 	const val BRAILLE_SENSOR = "braille_sensor"
 	const val BRAILLE_ECO = "braille_eco"

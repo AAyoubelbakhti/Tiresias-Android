@@ -55,7 +55,8 @@
 	<string name="ia_local_descarga_titulo">Descargando %1$s</string>
 	<string name="ia_local_falta">El modelo de IA no está descargado</string>
 	<string name="ia_local_error">La IA descargada ha fallado (%1$s)</string>
-	<string name="ia_local_lenta">La IA descargada está tardando demasiado</string>
+	<string name="ia_local_lenta">La IA descargada está tardando demasiado y se ha parado. Con poca memoria libre, el móvil va muy lento: cierra otras apps o usa una IA en la nube.</string>
+	<string name="ia_local_poca_memoria">No hay memoria libre para la IA descargada: quedan %1$s GB y el modelo necesita unos %2$s. Cierra otras apps y vuelve a probar, o usa una IA en la nube.</string>
 	<string name="ia_local_memoria">No hay memoria suficiente para la IA descargada. Tiresias sigue funcionando; prueba un modelo más pequeño o cierra otras apps.</string>
 	<string name="modelo_e2b">Gemma 4 E2B (cualquier móvil potente)</string>
 	<string name="modelo_e4b">Gemma 4 E4B (más capaz, mucha memoria)</string>

@@ -379,6 +379,10 @@ class Navegador(private val lector: Lector) {
 		if (i >= 0) return i
 		// El foco está en otra ventana (la de debajo de un menú): se empieza por el principio
 		if (lista.firstOrNull()?.windowId?.let { it != foco.windowId } == true) return -1
+		// El foco está en algo que no es parada pero tiene paradas dentro (la página web entera o su marco, donde la
+		// pone la app al cargar, como en CaixaBank): hacia delante se entra en lo primero de dentro; hacia atrás, a
+		// lo de antes. Si no, «el más cercano» podía ser lo último de la página y se saltaba todo hasta la barra
+		primeroDentro(lista, foco)?.let { k -> return if (adelante) k - 1 else k }
 		// (el más cercano por posición: si lo enfocado se ha rehecho más abajo mientras la página carga, es él mismo; lo de
 		// lo enfocado que se queda fuera de la vista tras desplazar lo resuelve desdeLoQueSeVe)
 		return cercano(lista, foco, Nodos.limites(foco))
@@ -481,6 +485,22 @@ class Navegador(private val lector: Lector) {
 	 * (la página de Chrome), solo cuenta lo de dentro de eso: si no, lo más cercano a un párrafo que se ha ido por
 	 * arriba es la barra de direcciones, y se saltaba a ella o al principio de la página. -1 si no hay ninguno.
 	 */
+	/**
+	 * El índice de la primera parada de [lista] que está dentro de [contenedor] (que no es parada), o null. Solo se
+	 * mira lo de su ventana que cae dentro de sus límites, y luego si de verdad cuelga de él.
+	 */
+	private fun primeroDentro(lista: List<AccessibilityNodeInfo>, contenedor: AccessibilityNodeInfo): Int? {
+		if (contenedor.childCount == 0) return null
+		val r = Nodos.limites(contenedor)
+		if (r.isEmpty) return null
+		for ((k, n) in lista.withIndex()) {
+			if (n.windowId != contenedor.windowId) continue
+			if (!r.contains(Nodos.limites(n))) continue
+			if (Nodos.dentroDe(n, contenedor)) return k
+		}
+		return null
+	}
+
 	fun cercano(lista: List<AccessibilityNodeInfo>, n: AccessibilityNodeInfo, r: android.graphics.Rect): Int {
 		if (r.isEmpty) return -1
 		val zona = Nodos.desplazable(n)?.takeIf { Nodos.vivo(it) }?.let { Nodos.limites(it) }

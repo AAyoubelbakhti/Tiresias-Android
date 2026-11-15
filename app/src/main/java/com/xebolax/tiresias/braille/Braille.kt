@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.annotation.ChecksSdkIntAtLeast
 import com.xebolax.tiresias.R
 import com.xebolax.tiresias.base.Registro
 import com.xebolax.tiresias.lectura.Lector
@@ -20,7 +19,7 @@ import com.xebolax.tiresias.voz.Tipo
 
 /**
  * El braille de Tiresias: el teclado braille en pantalla ([TecladoBraille]) y
- * las líneas braille ([LineaBraille], Android 15 o posterior). En la línea se
+ * las líneas braille ([LineaBraille]: las Seika por USB en cualquier Android y las HID en el 15 o posterior). En la línea se
  * ve lo que tiene el foco (lo mismo que se dice) y, en un campo de texto, su
  * texto con el cursor; desde su teclado se escribe y se maneja el móvil.
  *
@@ -30,11 +29,10 @@ import com.xebolax.tiresias.voz.Tipo
  */
 class Braille(private val lector: Lector, private val alAccion: (Accion) -> Unit) {
 	private val servicio = lector.servicio
-	private val linea: LineaBraille? = if (Build.VERSION.SDK_INT >= 35) LineaBraille(lector, { lector.manejador.post { hacer(it) } }, { aplicarPrimero() }) else null
+	private val linea = LineaBraille(lector, { lector.manejador.post { hacer(it) } }, { aplicarPrimero() })
 
-	/** Hace [f] con la línea braille, que solo existe en Android 15 o posterior (null antes o sin línea). */
-	@ChecksSdkIntAtLeast(api = 35, lambda = 0)
-	private inline fun <T> conLinea(f: (LineaBraille) -> T): T? = if (Build.VERSION.SDK_INT >= 35) linea?.let(f) else null
+	/** Hace [f] con la línea braille (las Seika van en cualquier Android; las HID, en el 15 o posterior). */
+	private inline fun <T> conLinea(f: (LineaBraille) -> T): T = f(linea)
 
 	private var tabla: TablaBraille = cargarTabla()
 	private var entrada: EntradaBraille = tabla.entrada()
@@ -112,7 +110,7 @@ class Braille(private val lector: Lector, private val alAccion: (Accion) -> Unit
 
 	/** Busca y conecta una línea braille, diciendo lo que pasa (lo pide el usuario). */
 	fun buscarLinea() {
-		conLinea { it.buscar(true) } ?: lector.decir(R.string.braille_linea_no_disponible)
+		conLinea { it.buscar(true) }
 	}
 
 	private fun cargarTabla(): TablaBraille {
@@ -204,7 +202,7 @@ class Braille(private val lector: Lector, private val alAccion: (Accion) -> Unit
 	// --- Línea braille de otra app (API, Backtalk 179) --------------------------------------
 
 	/** Otra app hace de línea braille de [celdas] celdas; [enviar] le manda lo que hay que ver. */
-	fun conectarVirtual(nombre: String, celdas: Int, enviar: (ByteArray) -> Unit): Boolean = conLinea { it.conectarVirtual(nombre, celdas, enviar) } ?: false
+	fun conectarVirtual(nombre: String, celdas: Int, enviar: (ByteArray) -> Unit): Boolean = conLinea { it.conectarVirtual(nombre, celdas, enviar) }
 
 	fun desconectarVirtual() {
 		conLinea { it.desconectarVirtual() }
@@ -215,7 +213,6 @@ class Braille(private val lector: Lector, private val alAccion: (Accion) -> Unit
 		lector.manejador.post { hacer(o) }
 	}
 
-	@androidx.annotation.RequiresApi(35)
 	private fun mostrarEn(l: LineaBraille, n: AccessibilityNodeInfo, dicho: String?) {
 		if (n.isEditable) {
 			campo = n

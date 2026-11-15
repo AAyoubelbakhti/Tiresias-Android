@@ -267,7 +267,7 @@
 	<string name="aj_seccion_braille">Braille</string>
 	<string name="aj_seccion_braille_res">Líneas braille, tabla braille y teclado braille en pantalla</string>
 	<string name="aj_braille_linea">Usar líneas braille</string>
-	<string name="aj_braille_linea_res">Por USB o Bluetooth, con Android 15 o posterior. Tiresias se conecta solo al enchufar o encender la línea.</string>
+	<string name="aj_braille_linea_res">Por USB o Bluetooth con Android 15 o posterior; las Seika, por USB en cualquier Android. Tiresias se conecta solo al enchufar o encender la línea.</string>
 	<string name="aj_braille_buscar">Buscar línea braille</string>
 	<string name="aj_braille_buscar_res">Busca entre lo conectado por USB y lo emparejado por Bluetooth y se conecta a la línea</string>
 	<string name="aj_braille_bluetooth">Permiso para líneas Bluetooth</string>
@@ -429,7 +429,9 @@
 	<string name="aj_volumen_deslizadores">Teclas de volumen en los deslizadores</string>
 	<string name="aj_volumen_deslizadores_res">Con un deslizador enfocado, las teclas de volumen suben y bajan su valor</string>
 	<string name="aj_escribir_al_levantar">Escribir al levantar el dedo</string>
-	<string name="aj_escribir_al_levantar_res">En el teclado en pantalla, explora hasta la tecla y levanta el dedo para escribirla, sin doble toque</string>
+	<string name="aj_escribir_al_levantar_res">En el teclado en pantalla, explora hasta la tecla y levanta el dedo para escribirla, sin doble toque. Si lo quitas, se escribe con doble toque en la tecla elegida</string>
+	<string name="aj_escritura_rapida">Escritura rápida en el teclado en pantalla</string>
+	<string name="aj_escritura_rapida_res">Al tocar el teclado, la tecla se dice al momento, sin esperar a saber si es un gesto, y se escribe al levantar el dedo. Encima del teclado no hay gestos ni doble toque: haz los gestos fuera de él. Android 11 o posterior</string>
 	<string name="aj_sonido_espera">Sonido mientras la IA piensa</string>
 	<string name="aj_sonido_espera_res">Un sonido suave cada tres segundos hasta que llega la respuesta (también al reconocer texto)</string>
 	<string name="aj_aviso_espera">Avisar si la IA tarda</string>
