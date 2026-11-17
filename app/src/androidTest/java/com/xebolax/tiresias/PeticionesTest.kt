@@ -35,6 +35,15 @@ class PeticionesTest : PruebaTiresias() {
 		assertNotNull("No se leyó el resto del mensaje", dichoQue(6000, m) { it.contains("aquí sigue el final del mensaje") })
 	}
 
+	/** El «Leer más» del texto de dentro de una fila que se pulsa (un mensaje de WhatsApp): se abre y se dice el resto. */
+	@Test
+	fun unLeerMasDentroDeUnaFilaSeAbreYSeLeeElResto() {
+		abrirMuestrario(".ActividadAviso")
+		val m = marca()
+		assertNotNull(irA("Fila larga"))
+		assertNotNull("No se leyó el resto de la fila", dichoQue(6000, m) { it.contains("termina con el resto de la fila") })
+	}
+
 	@Test
 	fun loCopiadoPorTiresiasYCopiarAnadiendo() {
 		abrirMuestrario()

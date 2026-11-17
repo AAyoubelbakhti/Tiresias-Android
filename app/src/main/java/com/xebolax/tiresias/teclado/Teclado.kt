@@ -77,6 +77,7 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 		if (codigo != KeyEvent.KEYCODE_VOLUME_UP && codigo != KeyEvent.KEYCODE_VOLUME_DOWN) lector.momentoTecla = SystemClock.uptimeMillis()
 		lector.momentoUsuario = SystemClock.uptimeMillis()
 		if (codigo == KeyEvent.KEYCODE_VOLUME_UP || codigo == KeyEvent.KEYCODE_VOLUME_DOWN) {
+			lector.momentoTeclaVolumen = SystemClock.uptimeMillis()
 			if (teclaDeLlamada(e)) return true
 			return volumen(e)
 		}

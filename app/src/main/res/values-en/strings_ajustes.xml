@@ -492,6 +492,8 @@
 	<string name="aj_oyente_avisos_no">No access. Tap to give it to Tiresias in the phone settings: then, with the phone locked, notifications are read in full</string>
 	<string name="aj_palabras_calladas">Words that silence a notification</string>
 	<string name="aj_palabras_calladas_res">If a notification has any of these words, it is not read on its own (it is still kept in Recent notifications). Separate them with commas</string>
+	<string name="aj_volumen_apagada">With the screen off, the keys change the media volume</string>
+	<string name="aj_volumen_apagada_res">With the voice on the accessibility volume, Android changes that volume with the screen off too. With this on, when the screen is off the keys raise and lower the music and the voice volume is left alone</string>
 	<string name="aj_decir_volumen">Announce volume changes</string>
 	<string name="aj_decir_volumen_res">When you raise or lower a volume with the keys, it says which one and how much is left ("Media volume, 40 percent")</string>
 	<string name="aj_solo_lo_elegido">When turning on, say only what you chose</string>

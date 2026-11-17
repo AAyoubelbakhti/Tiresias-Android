@@ -1,3 +1,14 @@
+== 1.0.16
+- El panel de volumen que Android enseña al pulsar las teclas de volumen ya no se anuncia ni se lleva el foco: Tiresias dice el volumen nuevo y el foco se queda donde estaba. Tocando el panel se lee como siempre.
+- Con la pantalla apagada, las teclas de volumen cambian el volumen multimedia y el de la voz no se toca (con la voz por el volumen de accesibilidad). Se quita en Ajustes, Voz, «Con la pantalla apagada, las teclas cambian el volumen multimedia».
+- Al poner el dedo sobre el elemento que ya tiene el foco, Tiresias lo vuelve a decir: antes no se oía nada.
+- Escritura rápida: con un menú o un diálogo de Tiresias abierto, se puede deslizar y tocar dos veces también en la parte de la pantalla donde estaba el teclado.
+- Chrome y las páginas web: al moverse por caracteres, palabras y líneas siempre se dice lo recorrido (antes, en muchas páginas, el cursor se movía en silencio). En un párrafo, «líneas» va frase a frase.
+- Tablas de las páginas web más anchas que la pantalla: se leen todas las columnas de cada fila, también las que quedan fuera por un lado, y al llegar a ellas la página se desplaza para enseñarlas. Antes se leían las dos primeras y se saltaba a la fila siguiente.
+- El «Leer más» de los mensajes largos (WhatsApp y otras apps) se abre solo también cuando el texto va dentro de una fila, y se dice el resto del mensaje.
+- El botón «Girar pantalla» que Android enseña al inclinar el móvil con el giro bloqueado ya no se anuncia ni se lleva el foco cada vez que aparece.
+- Teclado braille: con «Sonidos al escribir», un clic con cada letra escrita (además de los sonidos del espacio, de borrar y de Intro).
+- Soft Braille Keyboard está de fábrica entre los «Teclados que hablan solos» (Ajustes, Teclado): con él, Tiresias no repite lo que se escribe ni sus teclas, y ya no se oye la voz dos veces.
 == 1.0.15
 - Líneas braille Seika por USB, en cualquier versión de Android y sin instalar nada: las de 40 y 80 celdas (Seika versión 3, 4 y 5 y Seika80) y los anotadores Seika Mini. Al enchufarla, Android pregunta si Tiresias puede usarla; al aceptar, Tiresias dice «Línea braille conectada». Sus teclas, en el manual, apartado «Líneas Seika».
 - Nueva «Escritura rápida en el teclado en pantalla» (Ajustes, Teclado; Android 11 o posterior): al tocar el teclado, la tecla se dice al momento, sin esperar a saber si el toque es un gesto, y se escribe al levantar el dedo. Así se puede escribir deprisa. Encima del teclado no hay gestos ni doble toque: los gestos se hacen fuera de él.

@@ -105,7 +105,7 @@
 	<string name="aj_braille_gestos">Gestos del teclado braille</string>
 	<string name="aj_braille_gestos_res">Qué hace cada deslizamiento de uno, dos o tres dedos, y desde cada punto</string>
 	<string name="aj_braille_sonar_teclas">Sonidos al escribir</string>
-	<string name="aj_braille_sonar_teclas_res">Un sonido distinto al escribir un espacio, al borrar y con Intro</string>
+	<string name="aj_braille_sonar_teclas_res">Un clic con cada letra escrita y un sonido distinto con el espacio, al borrar y con Intro</string>
 	<string name="aj_braille_estilo_sonidos">Sonidos del teclado braille</string>
 	<string-array name="braille_estilo_nombres">
 		<item>Los de Android (no suenan si quitas los sonidos al tocar)</item>

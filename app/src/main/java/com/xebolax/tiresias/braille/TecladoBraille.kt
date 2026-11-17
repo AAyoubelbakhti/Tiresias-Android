@@ -341,6 +341,8 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 		mayuscula = false
 		ic.commitText(escrito, 1)
 		palabra.append(escrito)
+		// Un clic por letra escrita (con «Sonidos al escribir»; no si ya suena cada punto, que serían varios a la vez)
+		if (!Ajustes(this).brailleSonarPuntos) sonarTecla(Sonido.TECLA)
 		// El eco: la letra (lo normal), nada, o la palabra al terminarla con un espacio
 		if (Ajustes(this).brailleEco == ECO_LETRAS) decirEscrito(escrito)
 		mirarMenciones()

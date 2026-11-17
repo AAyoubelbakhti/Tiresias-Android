@@ -105,7 +105,7 @@
 	<string name="aj_braille_gestos">Braille keyboard gestures</string>
 	<string name="aj_braille_gestos_res">What each one, two or three finger slide does, and from each dot</string>
 	<string name="aj_braille_sonar_teclas">Typing sounds</string>
-	<string name="aj_braille_sonar_teclas_res">A different sound when typing a space, deleting and with Enter</string>
+	<string name="aj_braille_sonar_teclas_res">A click for each letter typed and a different sound for space, delete and Enter</string>
 	<string name="aj_braille_estilo_sonidos">Braille keyboard sounds</string>
 	<string-array name="braille_estilo_nombres">
 		<item>Android ones (silent if touch sounds are off)</item>

@@ -189,6 +189,8 @@ class Ajustes(contexto: Context) {
 	val volumenCursor: Boolean get() = logico(Claves.VOLUMEN_CURSOR, false)
 	/** Decir el volumen nuevo al cambiarlo con las teclas (SandFly). */
 	val decirVolumen: Boolean get() = logico(Claves.DECIR_VOLUMEN, true)
+	/** Con la pantalla apagada, las teclas de volumen cambian el multimedia y no el de la voz. */
+	val volumenApagadaMultimedia: Boolean get() = logico(Claves.VOLUMEN_APAGADA_MULTIMEDIA, true)
 
 	var callarProximidad: Boolean
 		get() = logico(Claves.CALLAR_PROXIMIDAD, true)
@@ -815,7 +817,8 @@ class Ajustes(contexto: Context) {
 		const val NVDA_PANTALLA_BRAILLE = "braille"
 
 		/** El teclado braille de TalkBack habla solo. */
-		val TECLADOS_QUE_HABLAN_DE_FABRICA = setOf("com.google.android.marvin.talkback", "com.android.talkback")
+		// (y Soft Braille Keyboard, que dice él mismo cada letra: con Tiresias se oía dos veces)
+		val TECLADOS_QUE_HABLAN_DE_FABRICA = setOf("com.google.android.marvin.talkback", "com.android.talkback", "com.dalton.braillekeyboard")
 
 		/** Para que el cambio de motor y lo que cambian los gestos o Ajustes no se pisen. */
 		private val CERROJO_VOZ = Any()
@@ -876,6 +879,7 @@ object Claves {
 	const val UNIDAD_PARTES = "unidad_partes"
 	const val MOSTRAR_EXPERIMENTOS = "mostrar_experimentos"
 	const val DECIR_VOLUMEN = "decir_volumen"
+	const val VOLUMEN_APAGADA_MULTIMEDIA = "volumen_apagada_multimedia"
 	const val VOLUMEN_CURSOR = "volumen_cursor"
 	const val PUNTUACION = "puntuacion"
 	const val NUMEROS = "numeros"

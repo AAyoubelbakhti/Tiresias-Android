@@ -57,6 +57,24 @@ class ActividadAviso : AppCompatActivity() {
 		largo.text = corto
 		largo.movementMethod = LinkMovementMethod.getInstance()
 		raiz.addView(largo)
+		// Lo mismo dentro de una fila que se pulsa (un mensaje de WhatsApp es un marco con el texto dentro): el foco va
+		// a la fila, y el enlace está en su texto
+		val textoFila = TextView(this)
+		val cortoFila = SpannableStringBuilder("Fila larga: empieza así… ")
+		val inicioFila = cortoFila.length
+		cortoFila.append("Leer más")
+		cortoFila.setSpan(object : ClickableSpan() {
+			override fun onClick(vista: View) {
+				textoFila.text = "Fila larga: empieza así y termina con el resto de la fila."
+			}
+		}, inicioFila, cortoFila.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+		textoFila.text = cortoFila
+		textoFila.movementMethod = LinkMovementMethod.getInstance()
+		raiz.addView(android.widget.FrameLayout(this).apply {
+			isClickable = true
+			isFocusable = true
+			addView(textoFila)
+		})
 		// Un campo con una falta marcada como la marcaría el corrector del teclado
 		val escrito = android.text.SpannableString("Hola mundp")
 		escrito.setSpan(android.text.style.SuggestionSpan(this, arrayOf("mundo", "mundos"), android.text.style.SuggestionSpan.FLAG_MISSPELLED), 5, 10, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)

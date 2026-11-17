@@ -618,6 +618,14 @@ class Navegador(private val lector: Lector) {
 		return true
 	}
 
+	/** Hasta cuándo un desplazamiento es de Tiresias (trae a la vista lo que enfoca), no del usuario. */
+	@Volatile private var propioHasta = 0L
+
+	/** Tiresias va a pedir a la app que traiga a la vista lo que enfoca: ese desplazamiento no es del usuario. */
+	fun desplazamientoPropio() {
+		propioHasta = SystemClock.uptimeMillis() + DESPLAZAMIENTO_PROPIO_MS
+	}
+
 	/** Cuándo se desplazó por última vez una lista (para saber si aún se está colocando). */
 	@Volatile private var desplazadaEn = 0L
 
@@ -625,7 +633,7 @@ class Navegador(private val lector: Lector) {
 		val ahora = SystemClock.uptimeMillis()
 		desplazadaEn = ahora
 		// Lo desplaza el usuario (lo tocaba hace poco o lo pidió con una acción), no Tiresias al moverse, ni la página sola
-		if (avance == null && ahora > anticipandoHasta && vuelta == null && !lector.continua.activa &&
+		if (avance == null && ahora > anticipandoHasta && ahora > propioHasta && vuelta == null && !lector.continua.activa &&
 			(ahora - lector.momentoUsuario < USUARIO_DESPLAZA_MS || ahora - desplazamientoPedido < USUARIO_DESPLAZA_MS)) {
 			e.source?.let { lista ->
 				val adelante = if (Build.VERSION.SDK_INT >= 28 && (e.scrollDeltaY != 0 || e.scrollDeltaX != 0)) e.scrollDeltaY > 0 || e.scrollDeltaX > 0
@@ -869,7 +877,11 @@ class Navegador(private val lector: Lector) {
 			Granularidad.PAGINA -> AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PAGE
 			Granularidad.FRASE -> 0
 		}
-		if (bit != 0 && foco.movementGranularities and bit != 0) {
+		// En una página web (fuera de los campos) lo recorre Tiresias: Chrome dice que sabe moverse por caracteres,
+		// palabras y líneas, pero muchas veces mueve su cursor sin avisar de lo recorrido, o avisa con el texto de otro
+		// elemento, y no se oía nada (Jesusvz); por párrafos, que Chrome no ofrece, siempre se leía
+		val propio = !foco.isEditable && enWeb(foco)
+		if (!propio && bit != 0 && foco.movementGranularities and bit != 0) {
 			val args = Bundle().apply {
 				putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, bit)
 				// Fuera de un campo no se selecciona: Tiresias apunta el trozo (EdicionTexto.apuntarTrozo)
@@ -887,7 +899,9 @@ class Navegador(private val lector: Lector) {
 			cursorNodo = foco
 			cursor = if (adelante) 0 else texto.length
 		}
-		val s = if (adelante) Segmentos.siguiente(texto, cursor, g) else Segmentos.anterior(texto, cursor, g)
+		// Un párrafo de una web no trae saltos de línea (los renglones los pone la pantalla): «línea» es ahí cada frase
+		val unidad = if (g == Granularidad.LINEA && propio && !texto.contains('\n')) Granularidad.FRASE else g
+		val s = if (adelante) Segmentos.siguiente(texto, cursor, unidad) else Segmentos.anterior(texto, cursor, unidad)
 		if (s == null) return alAcabarTexto(adelante, extender)
 		cursor = if (adelante) s.fin else s.inicio
 		lector.edicion.decirSegmento(s.texto, g)
@@ -1023,6 +1037,8 @@ class Navegador(private val lector: Lector) {
 		/** Lo que puede pasar desde que el usuario toca (o pide desplazar) hasta que llega el desplazamiento (con inercia). */
 		private const val USUARIO_DESPLAZA_MS = 4_000L
 		const val ESPERA_DESPLAZAR_MS = 150L
+		/** Lo que puede tardar la app en desplazarse para traer a la vista lo que Tiresias enfoca. */
+		private const val DESPLAZAMIENTO_PROPIO_MS = 800L
 		/** Lo que se espera, y cuántas veces, a que una lista desplazada termine de colocar sus filas. */
 		private const val ESPERA_COLOCAR_MS = 150L
 		private const val REINTENTOS_COLOCAR = 2

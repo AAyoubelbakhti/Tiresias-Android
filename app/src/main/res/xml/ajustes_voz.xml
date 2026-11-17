@@ -17,6 +17,7 @@
 	<SwitchPreferenceCompat app:key="callar_proximidad" app:title="@string/aj_callar_proximidad" app:summary="@string/aj_callar_proximidad_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="pantalla_al_hablar" app:title="@string/aj_pantalla_al_hablar" app:summary="@string/aj_pantalla_al_hablar_res" app:defaultValue="false" />
 	<SwitchPreferenceCompat app:key="decir_volumen" app:title="@string/aj_decir_volumen" app:summary="@string/aj_decir_volumen_res" app:defaultValue="true" />
+	<SwitchPreferenceCompat app:key="volumen_apagada_multimedia" app:title="@string/aj_volumen_apagada" app:summary="@string/aj_volumen_apagada_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="trocear_largos" app:title="@string/aj_trocear_largos" app:summary="@string/aj_trocear_largos_res" app:defaultValue="true" />
 	<ListPreference app:key="salida_audio" app:title="@string/aj_salida_audio" app:entries="@array/salida_audio_nombres" app:entryValues="@array/salida_audio_valores" app:defaultValue="sistema" />
 	<SwitchPreferenceCompat app:key="voz_multimedia" app:title="@string/aj_voz_multimedia" app:summary="@string/aj_voz_multimedia_res" app:defaultValue="false" />

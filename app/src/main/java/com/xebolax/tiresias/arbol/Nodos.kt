@@ -189,8 +189,8 @@ object Nodos {
 	 * simplificada): visible y, o bien es un control, o tiene texto y ningún
 	 * antepasado que lo vaya a leer por él.
 	 */
-	fun recibeFoco(n: AccessibilityNodeInfo): Boolean {
-		if (!n.isVisibleToUser) return false
+	fun recibeFoco(n: AccessibilityNodeInfo, aunqueNoSeVea: Boolean = false): Boolean {
+		if (!aunqueNoSeVea && !n.isVisibleToUser) return false
 		if (Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable) return true
 		val rol = rol(n)
 		if (rol == Rol.WEB && n.childCount > 0) return false
@@ -392,7 +392,8 @@ object Nodos {
 		val sinControles = agrupaControles(n)
 		// Una fila pegada al borde de su lista puede estar cortada (el título por encima del borde al volver
 		// hacia atrás): sus textos que no se ven se leen igual, que son parte de ella
-		textoHijos(n, sb, 0, maximo, aMedias(n), dichos, sinControles)
+		// (y los de algo que está entero fuera de la vista: la celda de una tabla web más ancha que la pantalla)
+		textoHijos(n, sb, 0, maximo, aMedias(n) || !n.isVisibleToUser, dichos, sinControles)
 		// Una fila medio fuera de la pantalla (al final de una lista que aún se está desplazando) tiene
 		// sus textos todavía sin ver: antes que «sin nombre», se leen aunque no se vean
 		if (sb.isBlank() && n.isVisibleToUser) textoHijos(n, sb, 0, maximo, true, dichos, sinControles)
@@ -493,16 +494,16 @@ object Nodos {
 
 	private fun recorrer(
 		n: AccessibilityNodeInfo, lista: MutableList<AccessibilityNodeInfo>, nivel: Int, maximo: Int,
-		agrupa: ((AccessibilityNodeInfo) -> Boolean)?, repartir: Boolean = false,
+		agrupa: ((AccessibilityNodeInfo) -> Boolean)?, repartir: Boolean = false, fueraDeLaVista: Boolean = false,
 	) {
 		if (nivel > PROFUNDIDAD_MAXIMA || lista.size >= maximo) return
-		if (!n.isVisibleToUser && n.childCount == 0) return
+		if (!fueraDeLaVista && !n.isVisibleToUser && n.childCount == 0) return
 		// Un elemento que una regla agrupa: una sola parada con todo lo de dentro
 		if (agrupa != null && n.isVisibleToUser && agrupa(n)) {
 			lista += n
 			return
 		}
-		val foco = recibeFoco(n)
+		val foco = recibeFoco(n, fueraDeLaVista)
 		val dentro = if (foco) contenido(n) else null
 		val soloEnvuelve = foco && (sinNadaQueDecir(n, dentro) || esMarcoDePagina(n, dentro))
 		if (foco && !soloEnvuelve) lista += n
@@ -511,13 +512,15 @@ object Nodos {
 		val leeHijos = foco && !soloEnvuelve && accionable(n) && dentro?.varios != true
 		val hijos = (0 until n.childCount).mapNotNull { i -> runCatching { n.getChild(i) }.getOrNull() }
 			.filter { hijo -> !(leeHijos && !esControlIndependiente(hijo) && !tieneControlDentro(hijo)) }
+		val filaConCeldas = !fueraDeLaVista && hijos.any { it.isVisibleToUser && esCeldaWeb(it) }
+		fun fuera(hijo: AccessibilityNodeInfo) = fueraDeLaVista || (filaConCeldas && !hijo.isVisibleToUser && esCeldaWeb(hijo))
 		// Muchos hijos (una lista larga, la persiana): cada rama en un hilo, y se juntan en su orden
 		if (repartir && hijos.size >= HIJOS_PARA_REPARTIR && nivel <= NIVEL_MAXIMO_REPARTO) {
 			val ramas = runCatching {
 				repartidor.invokeAll(hijos.map { hijo ->
 					java.util.concurrent.Callable {
 						val rama = ArrayList<AccessibilityNodeInfo>()
-						runCatching { recorrer(hijo, rama, nivel + 1, maximo, agrupa) }
+						runCatching { recorrer(hijo, rama, nivel + 1, maximo, agrupa, fueraDeLaVista = fuera(hijo)) }
 							.onFailure { Registro.w(ETIQUETA, "Fallo al leer una rama de la ventana", it) }
 						rama
 					}
@@ -531,8 +534,15 @@ object Nodos {
 				return
 			}
 		}
-		for (hijo in hijos) recorrer(hijo, lista, nivel + 1, maximo, agrupa, repartir)
+		// Las celdas de una fila de una tabla web que se salen de la pantalla por un lado (una tabla más ancha que el
+		// móvil): Chrome las da como no visibles, y al deslizar se leían las dos primeras columnas y se saltaba a la
+		// fila siguiente (Jesusvz, el foro de la sala). Si la fila se ve, son paradas; al enfocarlas se traen a la vista
+		for (hijo in hijos) recorrer(hijo, lista, nivel + 1, maximo, agrupa, repartir, fuera(hijo))
 	}
+
+	/** Una celda de una tabla de una página web (Chrome da su fila y su columna, y su rol). */
+	private fun esCeldaWeb(n: AccessibilityNodeInfo): Boolean =
+		n.collectionItemInfo != null && runCatching { n.extras?.getCharSequence("AccessibilityNodeInfo.chromeRole") }.getOrNull() != null
 
 	private fun tieneControlDentro(n: AccessibilityNodeInfo, nivel: Int = 0): Boolean {
 		if (nivel > 4) return false
@@ -607,13 +617,46 @@ object Nodos {
 			for (i in 0 until p.childCount) {
 				if (++vistos > 40) return
 				val h = runCatching { p.getChild(i) }.getOrNull() ?: continue
-				if (!h.isVisibleToUser || h.isFocusable || h.isClickable || h.isScreenReaderFocusableCompat()) continue
+				if (!h.isVisibleToUser || esParadaAparte(h)) continue
 				enlacesDe(h, lista)
 				dentro(h, nivel + 1)
 			}
 		}
 		dentro(n, 0)
 		return lista
+	}
+
+	/**
+	 * Si [h], dentro de una fila, es una parada por su cuenta (se enfoca o se pulsa): sus enlaces son suyos. Un texto
+	 * que solo se pulsa porque lleva enlaces (el de un mensaje de WhatsApp, con su «Leer más») no: se lee con la fila.
+	 */
+	private fun esParadaAparte(h: AccessibilityNodeInfo): Boolean {
+		if (h.isScreenReaderFocusableCompat()) return true
+		if (!h.isFocusable && !h.isClickable) return false
+		return !(h.className?.toString()?.endsWith("TextView") == true && tieneEnlacesEnTexto(h))
+	}
+
+	/** El nodo ([n] o uno de dentro que no es parada propia) cuyo texto lleva el enlace [enlace], o null. */
+	fun nodoDeEnlace(n: AccessibilityNodeInfo, enlace: android.text.style.ClickableSpan): AccessibilityNodeInfo? {
+		fun lleva(x: AccessibilityNodeInfo): Boolean {
+			val texto = (runCatching { x.text }.getOrNull() as? android.text.Spanned)
+				?: (runCatching { x.contentDescription }.getOrNull() as? android.text.Spanned) ?: return false
+			return texto.getSpans(0, texto.length, android.text.style.ClickableSpan::class.java).any { it === enlace }
+		}
+		if (lleva(n)) return n
+		var vistos = 0
+		fun dentro(p: AccessibilityNodeInfo, nivel: Int): AccessibilityNodeInfo? {
+			if (nivel > 6) return null
+			for (i in 0 until p.childCount) {
+				if (++vistos > 40) return null
+				val h = runCatching { p.getChild(i) }.getOrNull() ?: continue
+				if (!h.isVisibleToUser || esParadaAparte(h)) continue
+				if (lleva(h)) return h
+				dentro(h, nivel + 1)?.let { return it }
+			}
+			return null
+		}
+		return dentro(n, 0)
 	}
 
 	private fun AccessibilityNodeInfo.isScreenReaderFocusableCompat(): Boolean = Build.VERSION.SDK_INT >= 28 && isScreenReaderFocusable

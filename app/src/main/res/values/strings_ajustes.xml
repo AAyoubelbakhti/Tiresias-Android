@@ -627,6 +627,8 @@
 	<string name="aj_oyente_avisos_no">Sin acceso. Toca para dárselo a Tiresias en los ajustes del móvil: así, con el móvil bloqueado, las notificaciones se leen enteras</string>
 	<string name="aj_palabras_calladas">Palabras que callan una notificación</string>
 	<string name="aj_palabras_calladas_res">Si una notificación tiene alguna de estas palabras, no se lee sola (se guarda igual en Notificaciones recientes). Sepáralas con comas</string>
+	<string name="aj_volumen_apagada">Con la pantalla apagada, las teclas cambian el volumen multimedia</string>
+	<string name="aj_volumen_apagada_res">Con la voz por el volumen de accesibilidad, Android cambia ese volumen también con la pantalla apagada. Así, apagada, las teclas suben y bajan la música, y el de la voz no se toca</string>
 	<string name="aj_decir_volumen">Decir los cambios de volumen</string>
 	<string name="aj_decir_volumen_res">Al subir o bajar un volumen con las teclas, se dice cuál y cuánto queda («Volumen multimedia, 40 por ciento»)</string>
 	<string name="aj_solo_lo_elegido">Al encender, decir solo lo elegido</string>
