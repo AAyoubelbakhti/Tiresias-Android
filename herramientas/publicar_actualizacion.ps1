@@ -242,6 +242,12 @@ if ($Servidor -and (Test-Path (Split-Path -Parent $Servidor))) {
 	# version.json al final: asi nadie ve una version cuyo APK aun no esta subido
 	Copy-Item -Force (Join-Path $Dist "version.json") (Join-Path $Servidor "version.json")
 	Write-Host "[OK] Copiados a $Servidor (Synology Drive los sube al servidor)." -ForegroundColor Green
+	# En el servidor solo queda la ultima version: los APK de las anteriores se quitan (siguen en las releases de GitHub)
+	$actuales = @($Procesadores | ForEach-Object { $abis[$_].file })
+	if ($archivoNano) { $actuales += $archivoNano }
+	$viejos = @(Get-ChildItem -Path $Servidor -File -Filter "Tiresias*_v*.apk" | Where-Object { $actuales -notcontains $_.Name })
+	foreach ($v in $viejos) { Remove-Item -Force $v.FullName }
+	if ($viejos.Count -gt 0) { Write-Host "[OK] Quitados del servidor $($viejos.Count) APK de versiones anteriores." -ForegroundColor Green }
 } else {
 	Write-Host "     Sube los archivos a la carpeta del servidor de actualizaciones."
 }
