@@ -95,8 +95,17 @@ class ActividadPerfiles : ActividadBase() {
 		perfil.gestos.takeIf { it.isNotEmpty() }?.let { resources.getQuantityString(R.plurals.perf_gestos, it.size, it.size) },
 	).joinToString(", ").ifEmpty { getString(R.string.perf_sin_cambios) }
 
+	/** Si [paquete] tiene el toque directo guardado (lo mismo que mira el servicio al entrar en la app). */
+	private fun toqueDirectoEn(paquete: String): Boolean =
+		com.xebolax.tiresias.base.Almacen.protegido(this).getSharedPreferences("toque_directo", 0).getBoolean(paquete, false)
+
 	private fun elegirApp() {
-		val apps = com.xebolax.tiresias.base.Lanzables.todas(this).map { it.paquete to it.nombre }
+		// Las apps y también los teclados en pantalla: un perfil de teclado vale mientras ese teclado se ve
+		val teclados = runCatching {
+			getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.enabledInputMethodList.orEmpty()
+				.map { it.packageName to getString(R.string.perf_teclado, it.loadLabel(packageManager).toString()) }
+		}.getOrDefault(emptyList())
+		val apps = (com.xebolax.tiresias.base.Lanzables.todas(this).map { it.paquete to it.nombre } + teclados).distinctBy { it.first }
 		elegirUno(getString(R.string.perf_app_elegir), apps.map { it.second }, -1) { i -> editarApp(apps[i].first) }
 	}
 
@@ -131,6 +140,14 @@ class ActividadPerfiles : ActividadBase() {
 				elegirUno(getString(R.string.aj_eco), resources.getStringArray(R.array.eco_nombres).toList(), valores.indexOf(actual.ecoTeclado)) { i ->
 					ponerApp(paquete, actual.copy(ecoTeclado = valores[i]))
 					construir()
+				}
+			},
+			getString(if (toqueDirectoEn(paquete)) R.string.perf_app_toque_directo_si else R.string.perf_app_toque_directo_no) to {
+				val poner = !toqueDirectoEn(paquete)
+				if (poner && android.os.Build.VERSION.SDK_INT < 30) avisar(getString(R.string.no_disponible_version))
+				else {
+					com.xebolax.tiresias.base.Almacen.protegido(this).getSharedPreferences("toque_directo", 0).edit().putBoolean(paquete, poner).apply()
+					avisar(getString(if (poner) R.string.perf_app_toque_directo_puesto else R.string.perf_app_toque_directo_quitado, app))
 				}
 			},
 			getString(if (silenciada) R.string.perf_app_notif_si else R.string.perf_app_notif_no) to {

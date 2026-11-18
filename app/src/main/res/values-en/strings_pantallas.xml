@@ -497,4 +497,9 @@
 	<string name="partes_copiar_y_salir">Copy and exit</string>
 	<string name="partes_salir_sin_guardar">Exit without saving</string>
 	<string name="partes_seguir">Keep editing</string>
+	<string name="perf_app_toque_directo_no">Direct touch in the whole app (for games)</string>
+	<string name="perf_app_toque_directo_si">Remove direct touch from this app</string>
+	<string name="perf_app_toque_directo_puesto">When you open %1$s, touches will go to the app, without touch exploration or Tiresias gestures. The top and bottom bars can still be explored, and holding both volume keys turns it off.</string>
+	<string name="perf_app_toque_directo_quitado">%1$s has touch exploration again</string>
+	<string name="perf_teclado">%1$s keyboard</string>
 </resources>

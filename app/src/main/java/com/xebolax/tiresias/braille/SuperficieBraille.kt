@@ -198,7 +198,9 @@ class SuperficieBraille(
 					puntos = 0
 					dedosMax = 0
 					momento = SystemClock.uptimeMillis()
-					centros = if (calibrando == null) CalibracionBraille.leer(ajustes, oyente.espejo()) else null
+					// (lo ajustado al escribir que aún no se ha guardado vale ya)
+					if (calibrando != null) centros = null
+					else if (guardarAjuste == null || centros == null) centros = CalibracionBraille.leer(ajustes, oyente.espejo())
 				}
 				val i = e.actionIndex
 				val id = e.getPointerId(i)
@@ -234,7 +236,10 @@ class SuperficieBraille(
 					lista != null && gesto == null && dedosMax == 1 -> puntoCalibrado(sx, sy)
 					lista != null -> oyente.anunciar(textos.getString(R.string.braille_calibrar_un_dedo, lista.size + 1))
 					gesto != null -> oyente.alGesto(gesto)
-					puntos != 0 -> oyente.alPuntos(puntos)
+					puntos != 0 -> {
+						oyente.alPuntos(puntos)
+						ajustarPuntos()
+					}
 				}
 				puntos = 0
 				inicioX.clear()
@@ -247,6 +252,45 @@ class SuperficieBraille(
 			}
 		}
 		return true
+	}
+
+	/**
+	 * «Ajustar los puntos al escribir» (Ajustes, Braille; SandFly 1769e1880): con la calibración puesta, cada celda
+	 * escrita mueve un poco los puntos hacia donde han caído los dedos. Se guarda 2 s después del último cambio.
+	 */
+	private fun ajustarPuntos() {
+		val c = centros ?: return
+		if (!ajustes.brailleAjustarPuntos || inicioX.isEmpty()) return
+		val ancho = width.toFloat().coerceAtLeast(1f)
+		val alto = height.toFloat().coerceAtLeast(1f)
+		val toques = inicioX.keys.mapNotNull { id ->
+			val x = inicioX[id] ?: return@mapNotNull null
+			val y = inicioY[id] ?: return@mapNotNull null
+			com.xebolax.tiresias.nucleo.braille.AjustePuntos.Toque(numeroDePunto(punto(x, y)) - 1, x / ancho, y / alto)
+		}
+		val nuevos = com.xebolax.tiresias.nucleo.braille.AjustePuntos.ajustar(c.map { com.xebolax.tiresias.nucleo.braille.AjustePuntos.Punto(it.x, it.y) }, toques, ancho, alto) ?: return
+		val lista = nuevos.map { PointF(it.x, it.y) }
+		centros = lista
+		val espejo = oyente.espejo()
+		guardarAjuste?.let { removeCallbacks(it) }
+		val r = Runnable {
+			CalibracionBraille.guardar(ajustes, espejo, lista)
+			guardarAjuste = null
+		}
+		guardarAjuste = r
+		postDelayed(r, GUARDAR_AJUSTE_MS)
+	}
+
+	private var guardarAjuste: Runnable? = null
+
+	override fun onDetachedFromWindow() {
+		// Lo ajustado que aún no se había guardado, se guarda al quitar la superficie (al girar o al cerrar el teclado)
+		guardarAjuste?.let {
+			removeCallbacks(it)
+			it.run()
+		}
+		guardarAjuste = null
+		super.onDetachedFromWindow()
 	}
 
 	/**
@@ -272,5 +316,7 @@ class SuperficieBraille(
 		const val DISTANCIA_MINIMA = 0.08f
 		/** Lo mínimo que se mueve un dedo en un gesto, en milímetros (TalkBack usa 9). */
 		const val UMBRAL_GESTO_MM = 10f
+		/** Lo que se espera tras el último ajuste de los puntos para guardarlo. */
+		const val GUARDAR_AJUSTE_MS = 2000L
 	}
 }

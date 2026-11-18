@@ -7,6 +7,8 @@
 	<SwitchPreferenceCompat app:key="acciones_arriba_abajo" app:title="@string/aj_acciones_arriba_abajo" app:summary="@string/aj_acciones_arriba_abajo_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="recordar_foco" app:title="@string/aj_recordar_foco" app:summary="@string/aj_recordar_foco_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="dar_vuelta" app:title="@string/aj_dar_vuelta" app:summary="@string/aj_dar_vuelta_res" app:defaultValue="false" />
+	<SwitchPreferenceCompat app:key="texto_dentro_aparte" app:title="@string/aj_texto_dentro_aparte" app:summary="@string/aj_texto_dentro_aparte_res" app:defaultValue="false" />
+	<SwitchPreferenceCompat app:key="parar_antes_vuelta" app:title="@string/aj_parar_antes_vuelta" app:summary="@string/aj_parar_antes_vuelta_res" app:defaultValue="true" />
 	<ListPreference app:key="desplazar_listas" app:title="@string/aj_desplazar_listas" app:entries="@array/desplazar_listas_nombres" app:entryValues="@array/desplazar_listas_valores" app:defaultValue="normal" app:useSimpleSummaryProvider="true" />
 	<SwitchPreferenceCompat app:key="reparar_solo" app:title="@string/aj_reparar_solo" app:summary="@string/aj_reparar_solo_res" app:defaultValue="true" />
 	<Preference app:key="reparaciones" app:title="@string/aj_reparaciones" app:summary="@string/aj_reparaciones_res" />

@@ -5,7 +5,6 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import com.xebolax.tiresias.R
@@ -116,7 +115,7 @@ class SuperficieEncima(private val lector: Lector) {
 				}
 				override fun alApoyar() {
 					val a = lector.ajustes
-					if (a.brailleVibrarPuntos) vista?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+					if (a.brailleVibrarPuntos) lector.vibracion.puntoBraille()
 					if (a.brailleSonarPuntos) lector.sonidos.tocar(Sonido.TECLA, volumen = a.brailleVolumenSonidos / 100f)
 				}
 				override fun anunciar(texto: String) {

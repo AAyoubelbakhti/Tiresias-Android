@@ -249,6 +249,17 @@ class ActividadAjustes : ActividadBase(), PreferenceFragmentCompat.OnPreferenceS
 
 		private fun preparar() {
 			val c = requireContext()
+			// Solo los tipos de vibración que sabe hacer este vibrador; si solo hay uno de verdad, no se ofrece
+			findPreference<ListPreference>(Claves.TIPO_VIBRACION)?.let { lista ->
+				val posibles = com.xebolax.tiresias.voz.Vibracion.tiposPosibles(c)
+				val valores = resources.getStringArray(R.array.tipo_vibracion_valores).toList()
+				val nombres = resources.getStringArray(R.array.tipo_vibracion_nombres).toList()
+				val quedan = valores.indices.filter { valores[it] in posibles }
+				lista.entries = quedan.map { nombres[it] }.toTypedArray()
+				lista.entryValues = quedan.map { valores[it] }.toTypedArray()
+				if (lista.value !in posibles) lista.value = Ajustes.VIBRACION_AUTOMATICA
+				lista.isVisible = quedan.size > 2
+			}
 			findPreference<ListPreference>(Claves.IDIOMA)?.setOnPreferenceChangeListener { _, valor ->
 				Idioma.cambiar(c, valor as String)
 				ServicioTiresias.instancia?.recargarAjustes()

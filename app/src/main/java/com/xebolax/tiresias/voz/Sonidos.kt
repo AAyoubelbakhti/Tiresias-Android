@@ -238,18 +238,31 @@ class Vibracion(contexto: Context) {
 
 	private fun vibrarYa(v: Vibrator, s: Sonido) {
 		if (!v.hasVibrator()) return
+		vibrarPatron(v, patron(s))
+	}
+
+	/**
+	 * Vibra [patron] (pausas y pulsos en ms) con la intensidad y el tipo de vibración elegidos. El tipo
+	 * elegido que el vibrador no sabe hacer pasa al siguiente más sencillo (SandFly de49f8509: en algunos
+	 * móviles las primitivas a toda fuerza se notan menos que una onda con amplitud).
+	 */
+	private fun vibrarPatron(v: Vibrator, patron: LongArray) {
 		val intensidad = ajustes.intensidadVibracion
+		val tipo = ajustes.tipoVibracion
+		val amplitud = Build.VERSION.SDK_INT >= 26 && v.hasAmplitudeControl()
 		try {
-			if (conPrimitivas && Build.VERSION.SDK_INT >= 30) {
-				v.vibrate(composicion(patron(s), intensidad))
+			if (conPrimitivas && Build.VERSION.SDK_INT >= 30 && (tipo == Ajustes.VIBRACION_AUTOMATICA || tipo == Ajustes.VIBRACION_EFECTOS)) {
+				v.vibrate(composicion(patron, intensidad))
 				return
 			}
-			val ms = duraciones(patron(s), Build.VERSION.SDK_INT >= 26 && v.hasAmplitudeControl(), intensidad)
-			if (Build.VERSION.SDK_INT >= 26) {
+			val conIntensidad = amplitud && tipo != Ajustes.VIBRACION_ENCENDIDO
+			val ms = duraciones(patron, conIntensidad, intensidad)
+			if (Build.VERSION.SDK_INT >= 26 && conIntensidad) {
 				val amplitud = (intensidad * 255 / 100).coerceIn(1, 255)
 				val amplitudes = IntArray(ms.size) { if (it % 2 == 1) amplitud else 0 }
 				v.vibrate(VibrationEffect.createWaveform(ms, amplitudes, -1))
-			} else @Suppress("DEPRECATION") v.vibrate(ms, -1)
+			} else if (Build.VERSION.SDK_INT >= 26) v.vibrate(VibrationEffect.createWaveform(ms, -1))
+			else @Suppress("DEPRECATION") v.vibrate(ms, -1)
 		} catch (e: Exception) {
 			Registro.w("Vibracion", "No se pudo vibrar", e)
 		}
@@ -303,7 +316,39 @@ class Vibracion(contexto: Context) {
 		Sonido.TECLA_INTRO -> longArrayOf(0, 18)
 	}
 
+	/**
+	 * Un punto del teclado braille al apoyar el dedo: con la intensidad y el tipo de Tiresias, y aunque la
+	 * respuesta táctil del sistema esté apagada (SandFly 984fc163a). Se pide con «Vibrar con cada punto» del
+	 * teclado braille, que manda por encima de la vibración general.
+	 */
+	fun puntoBraille() {
+		val v = vibrador ?: return
+		runCatching { hilo.execute { if (v.hasVibrator()) vibrarPatron(v, PATRON_PUNTO) } }.onFailure { Registro.w("Vibracion", "No se pudo pasar al hilo de la vibración", it) }
+	}
+
 	companion object {
+		/** Un punto del teclado braille: un toque muy corto. */
+		private val PATRON_PUNTO = longArrayOf(0, 8)
+
+		/**
+		 * Los tipos de vibración que sabe hacer el vibrador de este móvil, en el orden de la lista de Ajustes
+		 * (siempre el automático y el de encendido y apagado).
+		 */
+		fun tiposPosibles(contexto: Context): List<String> {
+			val v: Vibrator? = if (Build.VERSION.SDK_INT >= 31) contexto.getSystemService(VibratorManager::class.java)?.defaultVibrator
+				else @Suppress("DEPRECATION") contexto.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+			val primitivas = Build.VERSION.SDK_INT >= 30 && runCatching {
+				v?.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK, VibrationEffect.Composition.PRIMITIVE_CLICK) == true
+			}.getOrDefault(false)
+			val amplitud = Build.VERSION.SDK_INT >= 26 && runCatching { v?.hasAmplitudeControl() == true }.getOrDefault(false)
+			return listOfNotNull(
+				Ajustes.VIBRACION_AUTOMATICA,
+				Ajustes.VIBRACION_EFECTOS.takeIf { primitivas },
+				Ajustes.VIBRACION_PULSOS.takeIf { amplitud },
+				Ajustes.VIBRACION_ENCENDIDO,
+			)
+		}
+
 		/**
 		 * Los milisegundos de [patron] para este vibrador. Un pulso muy corto no se nota: el motor de los
 		 * móviles sencillos (sin control de intensidad) ni llega a arrancar con menos de unos 25 ms, y ahí la

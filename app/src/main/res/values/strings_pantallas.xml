@@ -503,4 +503,9 @@
 	<string name="partes_copiar_y_salir">Copiar y salir</string>
 	<string name="partes_salir_sin_guardar">Salir sin guardar</string>
 	<string name="partes_seguir">Seguir editando</string>
+	<string name="perf_app_toque_directo_no">Toque directo en toda la app (para juegos)</string>
+	<string name="perf_app_toque_directo_si">Quitar el toque directo de esta app</string>
+	<string name="perf_app_toque_directo_puesto">Al entrar en %1$s, los toques irán a la app, sin exploración ni gestos de Tiresias. Las barras de arriba y de abajo se siguen explorando, y las dos teclas de volumen mantenidas lo quitan.</string>
+	<string name="perf_app_toque_directo_quitado">%1$s vuelve a tener la exploración táctil</string>
+	<string name="perf_teclado">Teclado %1$s</string>
 </resources>

@@ -243,6 +243,7 @@ class CoherenciaTest : PruebaTiresias() {
 	fun laVueltaVaAlPrincipioDeVerdadYAtrasAlFinal() {
 		abrirMuestrario()
 		ajuste(Claves.DAR_VUELTA, true)
+		ajuste(Claves.PARAR_ANTES_VUELTA, false)
 		val primero = hacer(Accion.PRIMERO).substringBefore(",")
 		assertNotNull(irA("Mensaje 1,"))
 		var m = marca()

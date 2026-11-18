@@ -673,4 +673,27 @@
 	<string name="aj_motor_del_sistema">La que use el sistema (ahora, %1$s)</string>
 	<string name="aj_motor_sistema_elegido">%1$s (del sistema, la elegida en el móvil)</string>
 	<string name="aj_motor_espeak_corto">eSpeak NG</string>
+	<string name="aj_tipo_vibracion">Tipo de vibración</string>
+	<string-array name="tipo_vibracion_nombres">
+		<item>Automático</item>
+		<item>Efectos hápticos (nítidos)</item>
+		<item>Pulsos con fuerza</item>
+		<item>Encendido y apagado</item>
+	</string-array>
+	<string-array name="tipo_vibracion_valores" translatable="false">
+		<item>automatica</item>
+		<item>efectos</item>
+		<item>pulsos</item>
+		<item>encendido</item>
+	</string-array>
+	<string name="aj_hora_con_segundos">Decir la hora con los segundos</string>
+	<string name="aj_hora_con_segundos_res">Al encender la pantalla, al desbloquear, en el estado del sistema y al pedir la hora</string>
+	<string name="aj_parar_antes_vuelta">Parar en el último antes de dar la vuelta</string>
+	<string name="aj_parar_antes_vuelta_res">Con «Dar la vuelta al final»: al llegar al final suena el borde; otro deslizamiento en la misma dirección da la vuelta</string>
+	<string name="aj_texto_dentro_aparte">Enfocar el texto de dentro por separado</string>
+	<string name="aj_texto_dentro_aparte_res">Cada texto de dentro de un botón o una fila es su propia parada (para las filas que esconden su texto). El doble toque pulsa el botón o la fila</string>
+	<string name="aj_braille_ajustar_puntos">Ajustar los puntos al escribir</string>
+	<string name="aj_braille_ajustar_puntos_res">Con los puntos calibrados, cada letra escrita los mueve un poco hacia donde caen tus dedos, por si la mano se desplaza</string>
+	<string name="aj_voz_silencio_inicio">Silencio al empezar a hablar</string>
+	<string name="aj_voz_silencio_inicio_res">Para los móviles que se comen el principio de las letras sueltas al deletrear: las voces incluidas empiezan con un instante de silencio</string>
 </resources>

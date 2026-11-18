@@ -1,3 +1,36 @@
+== 1.0.17
+- Páginas web: lo que está más abajo de lo que se ve también se recorre deslizando, y la página se desplaza sola para enseñarlo. Las respuestas largas de los chats de inteligencia artificial y las noticias se leen enteras, sin saltar al campo de preguntar o a lo que la página deja fijo abajo.
+- Páginas web: lo que se pulsa pero no es un botón ni un enlace y lleva mucho texto dentro (la burbuja de una respuesta) se lee párrafo a párrafo, en vez de todo de golpe y cortado. El doble toque en un párrafo lo pulsa entero.
+- Páginas web: por caracteres, palabras y líneas, al acabar un elemento se pasa al siguiente y se dice su primera letra, palabra o línea, no el elemento entero. Si la página rehace lo enfocado, se sigue desde su sitio en vez de sonar el borde.
+- Tablas de las páginas web: un enlace dentro de una celda dice su fila y su columna.
+- Lo que se dice de un elemento ya no se corta a las 600 letras.
+- Los deslizadores que van dentro de una fila o de una tarjeta (el volumen de una alarma, el precio mínimo de un filtro) son su propia parada y se ajustan con arriba y abajo y con las teclas de volumen. También los selectores de rueda, como las horas y los minutos de una alarma. Si la app redondea un paso, se prueba con uno mayor.
+- La barra de un audio o de un vídeo mientras suena (los mensajes de voz de WhatsApp) ya no hace sonar a Tiresias sin parar ni dice su valor cada segundo.
+- Un botón dentro de un marco con el mismo nombre (el «Transcribir» de WhatsApp) ya no se dice dos veces.
+- Toque directo para juegos: en el perfil de cada app, «Toque directo en toda la app». Al entrar en ella, los toques van directos a la app y Tiresias sigue hablando. Las barras de arriba y de abajo se siguen explorando para salir, y las dos teclas de volumen mantenidas lo quitan. Los juegos que lo piden al instalarse lo tienen puesto solos.
+- Al cerrar la persiana o el panel de volumen, vuelven el perfil, los gestos y el toque directo de la app de debajo.
+- Perfiles de teclado: un perfil puede ser de un teclado en pantalla y vale mientras ese teclado se ve.
+- «Dar la vuelta al final» se para primero en el último elemento con el sonido del borde; el siguiente deslizamiento da la vuelta. Se cambia en Ajustes, Navegación.
+- Desde la barra de estado o la de navegación, deslizar hacia la app pasa a ella.
+- Nuevo ajuste «Enfocar el texto de dentro por separado» (Ajustes, Navegación), para las filas que esconden su texto.
+- Nueva acción «Leer desde aquí solo lo del control de lectura»: con Encabezados, lee seguidos todos los encabezados; con Enlaces, todos los enlaces.
+- Nueva acción «Contar caracteres y palabras» del campo, también en el control Edición.
+- Nuevo control de lectura «Portapapeles»: arriba y abajo recorren lo copiado y el doble toque lo pega.
+- Nueva acción «Preguntar a la IA sobre la pantalla, por voz».
+- Al deslizar al final de una lista ya no se pasa a la pestaña siguiente de un paginador ni se cambia el valor de un selector.
+- «Primer elemento» y «Último elemento» ya no cambian la hora de un selector de rueda (en una alarma la giraban sin querer).
+- Un deslizamiento hecho mientras la lista aún se desplaza espera a que acabe y sigue desde ahí.
+- En los chats, al llegar al último mensaje se pasa enseguida a lo de debajo.
+- Si la app rehace lo enfocado justo antes del doble toque, se pulsa igualmente.
+- Nuevo ajuste «Tipo de vibración» (Ajustes, Voz). La vibración de los puntos del teclado braille usa la intensidad de Tiresias aunque la respuesta táctil del móvil esté apagada.
+- Nuevo ajuste «Silencio al empezar a hablar» (Ajustes, Voz), para los móviles que se comen el principio de las letras al deletrear.
+- Nuevo ajuste «Decir la hora con los segundos» (Ajustes, Notificaciones y pantalla).
+- Teclado braille: nuevo ajuste «Ajustar los puntos al escribir» (Ajustes, Braille), que mueve un poco los puntos calibrados hacia donde caen tus dedos.
+- Teclas de volumen: se puede poner una acción a una sola pulsación. Cuando Tiresias se queda las pulsaciones, el volumen cambia el de lo que suena (también un Chromecast).
+- Si una voz del sistema se cuelga mientras te mueves deprisa, Tiresias lo nota y pasa a otra voz.
+- Las voces de algunos motores que dan su idioma con tres letras ya se usan para su idioma.
+- Al arrancar con el teclado ya abierto, no se anuncia «Teclado».
+- El registro técnico lleva las últimas teclas de volumen y los servicios de accesibilidad activos, para entender mejor los fallos. No lleva nada de lo que hay en la pantalla.
 == 1.0.16
 - El panel de volumen que Android enseña al pulsar las teclas de volumen ya no se anuncia ni se lleva el foco: Tiresias dice el volumen nuevo y el foco se queda donde estaba. Tocando el panel se lee como siempre.
 - Con la pantalla apagada, las teclas de volumen cambian el volumen multimedia y el de la voz no se toca (con la voz por el volumen de accesibilidad). Se quita en Ajustes, Voz, «Con la pantalla apagada, las teclas cambian el volumen multimedia».

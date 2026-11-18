@@ -187,4 +187,5 @@
 	<string name="ui_frase_prueba">Hola, soy Tiresias. Así sueno con estos ajustes.</string>
 	<string name="ui_ajustes_voz_sistema">Ajustes de síntesis de voz del sistema</string>
 	<string name="ui_mas_en_menu">Lo demás está en el menú lateral: Abrir menú, arriba a la izquierda.</string>
+	<string name="gestos_toque_directo_al_entrar">Toque directo: los toques van a la app. Las barras de arriba y de abajo se siguen explorando; para quitarlo, mantén las dos teclas de volumen.</string>
 </resources>

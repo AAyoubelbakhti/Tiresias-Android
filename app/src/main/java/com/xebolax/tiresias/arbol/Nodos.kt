@@ -26,6 +26,16 @@ object Nodos {
 	private const val PARTE_ANCHO = 0.8f
 	/** Cuántos nodos se miran como mucho para saber si un marco de página tiene controles muy hondos. */
 	private const val MAXIMO_NODOS_MARCO = 400
+	/** A partir de cuántos textos o letras algo pulsable de una web que no es un control no se lee de una vez. */
+	private const val TEXTOS_CONTENEDOR_WEB = 6
+	private const val LETRAS_CONTENEDOR_WEB = 400
+
+	/**
+	 * «Enfocar el texto de dentro por separado» (Ajustes, Navegación; SandFly 8d046e83b): cada texto de dentro de un
+	 * elemento que se pulsa es su propia parada, y el elemento solo lo es si dice algo por sí mismo. Para las filas que
+	 * esconden su texto detrás de su propia descripción. Lo pone el navegador antes de hacer cada orden.
+	 */
+	@Volatile var textoDentroAparte = false
 
 	/** El rol de [n] por su clase (como `Role.java` de TalkBack), su rol web y sus propiedades. */
 	fun rol(n: AccessibilityNodeInfo): Rol {
@@ -64,6 +74,8 @@ object Nodos {
 			clase.contains("Dialog") -> Rol.DIALOGO
 			clase.endsWith("TextView") -> Rol.TEXTO
 			n.isCheckable && n.isClickable -> Rol.CASILLA
+			// Un deslizador hecho a mano (Compose, apps propias): tiene un valor y se le puede poner otro
+			esAjustable(n) && n.actionList.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id } -> Rol.DESLIZADOR
 			n.isClickable && clase.endsWith("View") && n.childCount == 0 -> Rol.BOTON
 			else -> Rol.NINGUNO
 		}
@@ -239,12 +251,15 @@ object Nodos {
 			// está más hondo de lo que lee. En una noticia (oem.com.mx, Chrome) toda la página iba dentro de un
 			// marco pulsable con los párrafos muy abajo: el marco no era parada, pero «leía» los párrafos, así que
 			// nadie los leía y al deslizar se saltaban hasta la barra de Chrome
-			if (accionable(p) && p.isVisibleToUser) {
-				if (nivel < NIVELES_LECTURA && !soloAgrupa(p) && !esMarcoDePagina(p, contenido(p))) return true
+			// (en una web, aunque no se vea: lo de fuera de la pantalla también son paradas, y un enlace de más abajo lee
+			// su texto igual que si se viera)
+			val aLaVista = p.isVisibleToUser || rolChrome(p) != null
+			if (accionable(p) && aLaVista && !textoDentroAparte) {
+				if (nivel < NIVELES_LECTURA && !soloAgrupa(p) && !esMarcoDePagina(p, contenido(p)) && !contenedorWebLargo(p)) return true
 			}
 			// Un encabezado sin texto propio (la fila de una categoría de ajustes) se lee con su texto dentro:
 			// una sola parada, no el encabezado y luego su texto otra vez
-			if (esEncabezado(p) && !tieneTexto(p) && p.isVisibleToUser) return true
+			if (esEncabezado(p) && !tieneTexto(p) && aLaVista) return true
 			p = runCatching { p!!.parent }.getOrNull()
 			nivel++
 		}
@@ -265,9 +280,11 @@ object Nodos {
 		var nivel = 0
 		var candidato: AccessibilityNodeInfo? = null
 		while (actual != null && nivel < 15) {
-			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual)) && !esVeloDePagina(actual)) {
+			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual)) && !esVeloDePagina(actual) && !contenedorWebLargo(actual)) {
 				if (accionable(actual) && actual.isVisibleToUser) return actual
 				if (candidato == null && recibeFoco(actual)) candidato = actual
+				// Con el texto de dentro por separado, al tocar un texto se enfoca ese texto, no la fila
+				if (textoDentroAparte && candidato != null) return candidato
 			}
 			actual = runCatching { actual!!.parent }.getOrNull()
 			nivel++
@@ -385,7 +402,7 @@ object Nodos {
 	 * lista, botones con texto dentro), sin los hijos que reciben el foco por su
 	 * cuenta. Como hace TalkBack con la descripción del árbol.
 	 */
-	fun textoHijos(n: AccessibilityNodeInfo, maximo: Int = 600): String {
+	fun textoHijos(n: AccessibilityNodeInfo, maximo: Int = 3000): String {
 		val sb = StringBuilder()
 		val dichos = HashSet<String>()
 		// Los controles de dentro de un contenedor que los agrupa son paradas propias: no se leen con él
@@ -447,7 +464,58 @@ object Nodos {
 	private fun esControlIndependiente(n: AccessibilityNodeInfo): Boolean {
 		val clase = n.className?.toString().orEmpty()
 		return n.isCheckable || n.isEditable || clase.endsWith("Button") || clase.endsWith("ImageButton") || clase.endsWith("Switch") || clase.endsWith("CheckBox") ||
-			(clase.endsWith("ImageView") && !n.contentDescription.isNullOrBlank() && accionable(n)) || esParadaSuelta(n)
+			(clase.endsWith("ImageView") && !n.contentDescription.isNullOrBlank() && accionable(n)) || esParadaSuelta(n) ||
+			// Un deslizador dentro de una fila o una tarjeta que se pulsa (el volumen de una alarma, el precio de un filtro):
+			// es su propia parada. Si no, el foco se quedaba en la fila y arriba y abajo no lo cambiaban (Dharius, Blue-Sky)
+			(esAjustable(n) && n.isVisibleToUser)
+	}
+
+	/** Si [n] tiene un valor que se puede subir y bajar (un deslizador, una barra que se mueve), como TalkBack. */
+	fun esAjustable(n: AccessibilityNodeInfo): Boolean {
+		if (n.rangeInfo == null) return false
+		val ids = n.actionList.map { it.id }
+		return AccessibilityNodeInfo.ACTION_SCROLL_FORWARD in ids || AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD in ids ||
+			AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id in ids
+	}
+
+	/** Si [n] es un selector de rueda (`NumberPicker` y los de Samsung): no tiene valor, pero sube y baja al desplazarlo. */
+	fun esSelectorDeRueda(n: AccessibilityNodeInfo): Boolean {
+		val clase = n.className?.toString().orEmpty()
+		if (!(clase.endsWith("NumberPicker") || clase.endsWith("Picker") && !clase.endsWith("DatePicker") && !clase.endsWith("TimePicker"))) return false
+		val ids = n.actionList.map { it.id }
+		return AccessibilityNodeInfo.ACTION_SCROLL_FORWARD in ids || AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD in ids
+	}
+
+	/**
+	 * Lo que se ajusta con arriba y abajo estando el foco en [n]: él mismo si es un deslizador; si es una fila, el
+	 * único deslizador de dentro (hasta tres niveles); si está dentro de un selector de rueda (el número de la hora
+	 * de una alarma), ese selector. Null si no hay nada que ajustar.
+	 */
+	fun ajustableDe(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		if (esAjustable(n) || esSelectorDeRueda(n)) return n
+		var encontrado: AccessibilityNodeInfo? = null
+		var varios = false
+		fun buscar(x: AccessibilityNodeInfo, nivel: Int) {
+			if (nivel > 3 || varios) return
+			for (i in 0 until x.childCount) {
+				val h = runCatching { x.getChild(i) }.getOrNull() ?: continue
+				if (!h.isVisibleToUser) continue
+				if (esAjustable(h)) {
+					if (encontrado != null) { varios = true; return }
+					encontrado = h
+				} else buscar(h, nivel + 1)
+			}
+		}
+		if (accionable(n) || n.childCount > 0) buscar(n, 1)
+		if (!varios && encontrado != null) return encontrado
+		var p = runCatching { n.parent }.getOrNull()
+		var nivel = 0
+		while (p != null && nivel < 3) {
+			if (esSelectorDeRueda(p)) return p
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return null
 	}
 
 	/**
@@ -458,21 +526,60 @@ object Nodos {
 	 * «programar».
 	 */
 	private fun esParadaSuelta(n: AccessibilityNodeInfo): Boolean =
-		n.isFocusable && !accionable(n) && !n.isEditable && !n.contentDescription.isNullOrBlank() && n.isVisibleToUser
+		!accionable(n) && !n.isEditable && n.isVisibleToUser &&
+			(n.isFocusable && !n.contentDescription.isNullOrBlank() ||
+				// Lo que la app (Compose, con mergeDescendants) hace una parada por sí mismo, con su texto: en «Acerca de
+				// esta app» de Play Store cada dato es así, y se leía todo junto con el contenedor (Jesusvz)
+				Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable && tieneTexto(n))
 
 	/**
 	 * Los nodos que reciben el foco en la ventana de [raiz], en orden de lectura
 	 * (el del árbol, que es el de las apps bien hechas; respeta
 	 * `accessibilityTraversalBefore/After` en la medida en que Android lo aplica al árbol).
 	 */
-	fun ordenLectura(raiz: AccessibilityNodeInfo, maximo: Int = 2000, agrupa: ((AccessibilityNodeInfo) -> Boolean)? = null): List<AccessibilityNodeInfo> {
+	fun ordenLectura(raiz: AccessibilityNodeInfo, maximo: Int = 6000, agrupa: ((AccessibilityNodeInfo) -> Boolean)? = null): List<AccessibilityNodeInfo> {
 		val lista = ArrayList<AccessibilityNodeInfo>()
+		largosWeb.clear()
 		try {
 			recorrer(raiz, lista, 0, maximo, agrupa, repartir = true)
 		} catch (e: Exception) {
 			Registro.w(ETIQUETA, "Fallo al recorrer la ventana", e)
 		}
-		return lista
+		return sinRepetidos(lista)
+	}
+
+	/**
+	 * Quita la parada que repite a la de al lado cuando una está dentro de la otra y las dos dicen lo mismo: un
+	 * marco con la descripción «Transcribir» y, dentro, el botón «Transcribir» (WhatsApp, Lucerito_Stefi). Se queda
+	 * la que se pulsa (o la de dentro, si se pulsan las dos).
+	 */
+	private fun sinRepetidos(lista: List<AccessibilityNodeInfo>): List<AccessibilityNodeInfo> {
+		if (lista.size < 2) return lista
+		val nombres = lista.map { n -> (n.contentDescription ?: n.text)?.toString()?.trim()?.lowercase().orEmpty() }
+		var quitar: MutableSet<Int>? = null
+		for (i in 0 until lista.size - 1) {
+			val a = nombres[i]
+			if (a.length < 2 || a != nombres[i + 1]) continue
+			val fuera = lista[i]
+			val dentro = lista[i + 1]
+			if (!esAntepasado(fuera, dentro)) continue
+			val sobra = if (accionable(fuera) && !accionable(dentro)) i + 1 else i
+			(quitar ?: HashSet<Int>().also { quitar = it }).add(sobra)
+		}
+		val q = quitar ?: return lista
+		return lista.filterIndexed { i, _ -> i !in q }
+	}
+
+	/** Si [padre] está por encima de [n] (hasta cuatro niveles). */
+	private fun esAntepasado(padre: AccessibilityNodeInfo, n: AccessibilityNodeInfo): Boolean {
+		var p = runCatching { n.parent }.getOrNull()
+		var nivel = 0
+		while (p != null && nivel < 4) {
+			if (p == padre) return true
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return false
 	}
 
 	/**
@@ -494,25 +601,37 @@ object Nodos {
 
 	private fun recorrer(
 		n: AccessibilityNodeInfo, lista: MutableList<AccessibilityNodeInfo>, nivel: Int, maximo: Int,
-		agrupa: ((AccessibilityNodeInfo) -> Boolean)?, repartir: Boolean = false, fueraDeLaVista: Boolean = false,
+		agrupa: ((AccessibilityNodeInfo) -> Boolean)?, repartir: Boolean = false, fueraDeLaVista: Boolean = false, web: Boolean = false,
 	) {
 		if (nivel > PROFUNDIDAD_MAXIMA || lista.size >= maximo) return
-		if (!fueraDeLaVista && !n.isVisibleToUser && n.childCount == 0) return
+		// Dentro de una página web que se ve, lo que está fuera de la pantalla también es parada, como en TalkBack y
+		// SandFly (Chrome lo trae a la vista al enfocarlo): si no, lo siguiente a lo último que se ve era lo que la
+		// página deja fijo abajo (el campo de preguntar de un chat de IA, un aviso), y se saltaba el resto del texto
+		// (suzuqui, Venice). Solo si la propia vista web se ve: la de una pestaña escondida, no
+		val enWeb = web || (n.isVisibleToUser && n.className?.toString()?.endsWith("WebView") == true)
+		if (!fueraDeLaVista && !enWeb && !n.isVisibleToUser && n.childCount == 0) return
 		// Un elemento que una regla agrupa: una sola parada con todo lo de dentro
 		if (agrupa != null && n.isVisibleToUser && agrupa(n)) {
 			lista += n
 			return
 		}
-		val foco = recibeFoco(n, fueraDeLaVista)
+		val foco = recibeFoco(n, fueraDeLaVista || enWeb)
 		val dentro = if (foco) contenido(n) else null
-		val soloEnvuelve = foco && (sinNadaQueDecir(n, dentro) || esMarcoDePagina(n, dentro))
+		// Algo pulsable de una web que no es un control (un div con onclick) y lleva mucho texto dentro (la respuesta de
+		// un chat de IA, una noticia entera): no lee a sus hijos, que son paradas uno a uno (SandFly WebTreeOrder)
+		val largoWeb = foco && contenedorWebLargo(n)
+		// Con el texto de dentro por separado: algo que se pulsa y no dice nada por sí mismo (ni texto, ni estado, ni es un
+		// encabezado o lo seleccionado) no es parada; lo son sus textos
+		val sinPropio = foco && textoDentroAparte && accionable(n) && !tieneTexto(n) && !n.isCheckable && !n.isEditable &&
+			!n.isSelected && !esEncabezado(n) && textoHijos(n, 200).isNotBlank()
+		val soloEnvuelve = foco && (sinNadaQueDecir(n, dentro) || esMarcoDePagina(n, dentro) || largoWeb && !tieneTexto(n) || sinPropio)
 		if (foco && !soloEnvuelve) lista += n
 		// Un control con texto dentro: sus hijos se leen con él, no aparte (salvo controles propios dentro;
 		// y si agrupa varios controles, o solo los envuelve sin decir nada, cada uno es su propia parada)
-		val leeHijos = foco && !soloEnvuelve && accionable(n) && dentro?.varios != true
+		val leeHijos = foco && !soloEnvuelve && accionable(n) && dentro?.varios != true && !largoWeb && !textoDentroAparte
 		val hijos = (0 until n.childCount).mapNotNull { i -> runCatching { n.getChild(i) }.getOrNull() }
 			.filter { hijo -> !(leeHijos && !esControlIndependiente(hijo) && !tieneControlDentro(hijo)) }
-		val filaConCeldas = !fueraDeLaVista && hijos.any { it.isVisibleToUser && esCeldaWeb(it) }
+		val filaConCeldas = !fueraDeLaVista && !enWeb && hijos.any { it.isVisibleToUser && esCeldaWeb(it) }
 		fun fuera(hijo: AccessibilityNodeInfo) = fueraDeLaVista || (filaConCeldas && !hijo.isVisibleToUser && esCeldaWeb(hijo))
 		// Muchos hijos (una lista larga, la persiana): cada rama en un hilo, y se juntan en su orden
 		if (repartir && hijos.size >= HIJOS_PARA_REPARTIR && nivel <= NIVEL_MAXIMO_REPARTO) {
@@ -520,7 +639,7 @@ object Nodos {
 				repartidor.invokeAll(hijos.map { hijo ->
 					java.util.concurrent.Callable {
 						val rama = ArrayList<AccessibilityNodeInfo>()
-						runCatching { recorrer(hijo, rama, nivel + 1, maximo, agrupa, fueraDeLaVista = fuera(hijo)) }
+						runCatching { recorrer(hijo, rama, nivel + 1, maximo, agrupa, fueraDeLaVista = fuera(hijo), web = enWeb) }
 							.onFailure { Registro.w(ETIQUETA, "Fallo al leer una rama de la ventana", it) }
 						rama
 					}
@@ -537,7 +656,67 @@ object Nodos {
 		// Las celdas de una fila de una tabla web que se salen de la pantalla por un lado (una tabla más ancha que el
 		// móvil): Chrome las da como no visibles, y al deslizar se leían las dos primeras columnas y se saltaba a la
 		// fila siguiente (Jesusvz, el foro de la sala). Si la fila se ve, son paradas; al enfocarlas se traen a la vista
-		for (hijo in hijos) recorrer(hijo, lista, nivel + 1, maximo, agrupa, repartir, fuera(hijo))
+		for (hijo in hijos) recorrer(hijo, lista, nivel + 1, maximo, agrupa, repartir, fuera(hijo), enWeb)
+	}
+
+	/** El rol HTML que da Chrome (o una WebView) en los extras; null fuera de una web. */
+	fun rolChrome(n: AccessibilityNodeInfo): String? =
+		runCatching { n.extras?.getCharSequence("AccessibilityNodeInfo.chromeRole")?.toString() }.getOrNull()
+
+	/** Los roles de Chrome que son controles de verdad: solo ellos leen dentro de sí lo que llevan (SandFly WebTreeOrder). */
+	private val ROLES_CONTROL_WEB = setOf(
+		"link", "button", "toggleButton", "popUpButton", "checkBox", "radioButton", "switch", "tab", "menuItem",
+		"menuItemCheckBox", "menuItemRadio", "menuListOption", "listBoxOption", "disclosureTriangle", "comboBoxMenuButton",
+		"comboBoxSelect", "cell", "gridCell", "row", "columnHeader", "rowHeader", "image", "img", "textField", "searchBox",
+	)
+
+	/** Lo ya mirado por [contenedorWebLargo] en el orden que se está haciendo. */
+	private val largosWeb = java.util.concurrent.ConcurrentHashMap<AccessibilityNodeInfo, Boolean>()
+
+	/**
+	 * Algo pulsable de una página web que no es un control (un `div` con `onclick`, la burbuja de una respuesta de
+	 * un chat de IA) y lleva dentro mucho texto (más de [TEXTOS_CONTENEDOR_WEB] textos o [LETRAS_CONTENEDOR_WEB]
+	 * letras): no lee a sus hijos; cada texto es su propia parada. Si no, se leía todo de golpe y cortado, y el
+	 * siguiente deslizamiento saltaba al botón de copiar (suzuqui). Una tarjeta corta (titular y fecha) sí se lee junta.
+	 */
+	fun contenedorWebLargo(n: AccessibilityNodeInfo): Boolean {
+		if (!accionable(n) || n.childCount == 0 || n.isEditable) return false
+		val rol = rolChrome(n) ?: return false
+		if (rol in ROLES_CONTROL_WEB) return false
+		largosWeb[n]?.let { return it }
+		var textos = 0
+		var letras = 0
+		var vistos = 0
+		fun contar(x: AccessibilityNodeInfo, nivel: Int): Boolean {
+			if (nivel > 12) return false
+			for (i in 0 until x.childCount) {
+				if (++vistos > MAXIMO_NODOS_MARCO) return false
+				val h = runCatching { x.getChild(i) }.getOrNull() ?: continue
+				val t = (h.contentDescription ?: h.text)?.toString().orEmpty()
+				if (t.isNotBlank() && h.childCount == 0) {
+					textos++
+					letras += t.length
+					if (textos > TEXTOS_CONTENEDOR_WEB || letras > LETRAS_CONTENEDOR_WEB) return true
+				}
+				if (contar(h, nivel + 1)) return true
+			}
+			return false
+		}
+		val largo = contar(n, 0)
+		if (largosWeb.size > 500) largosWeb.clear()
+		largosWeb[n] = largo
+		return largo
+	}
+
+	/** La celda de una tabla web en la que está [n] (él mismo o hasta tres niveles por encima), o null. */
+	fun celdaWebDe(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		var p: AccessibilityNodeInfo? = n
+		repeat(4) {
+			val x = p ?: return null
+			if (esCeldaWeb(x)) return x
+			p = runCatching { x.parent }.getOrNull()
+		}
+		return null
 	}
 
 	/** Una celda de una tabla de una página web (Chrome da su fila y su columna, y su rol). */
@@ -555,12 +734,12 @@ object Nodos {
 	}
 
 	/** El antepasado desplazable más cercano de [n] (para desplazar la lista en la que está). */
-	fun desplazable(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+	fun desplazable(n: AccessibilityNodeInfo, alSeguir: Boolean = false): AccessibilityNodeInfo? {
 		var p: AccessibilityNodeInfo? = n
 		var nivel = 0
 		while (p != null && nivel < 20) {
 			// Un deslizador «se desplaza» cambiando su valor: no es una lista
-			if (p.isScrollable && p.rangeInfo == null) return p
+			if (p.isScrollable && p.rangeInfo == null && (!alSeguir || seSigueDesplazando(p))) return p
 			p = runCatching { p!!.parent }.getOrNull()
 			nivel++
 		}
@@ -576,11 +755,11 @@ object Nodos {
 	 * desplazamiento a la lista, no pasa nada y la navegación se queda clavada al
 	 * final de lo que se ve. null si ningún antepasado puede ir hacia ahí.
 	 */
-	fun desplazableHacia(n: AccessibilityNodeInfo, accion: Int): AccessibilityNodeInfo? {
+	fun desplazableHacia(n: AccessibilityNodeInfo, accion: Int, alSeguir: Boolean = false): AccessibilityNodeInfo? {
 		var p: AccessibilityNodeInfo? = n
 		var nivel = 0
 		while (p != null && nivel < 20) {
-			if (p.isScrollable && p.rangeInfo == null && p.actionList.any { it.id == accion }) return p
+			if (p.isScrollable && p.rangeInfo == null && p.actionList.any { it.id == accion } && (!alSeguir || seSigueDesplazando(p))) return p
 			p = runCatching { p!!.parent }.getOrNull()
 			nivel++
 		}
@@ -591,14 +770,39 @@ object Nodos {
 	 * El primer nodo desplazable visible de la ventana (si el foco no está en ninguna
 	 * lista); con [accion], el primero que pueda desplazarse ahora con ella.
 	 */
-	fun primerDesplazable(raiz: AccessibilityNodeInfo, accion: Int? = null, nivel: Int = 0): AccessibilityNodeInfo? {
+	fun primerDesplazable(raiz: AccessibilityNodeInfo, accion: Int? = null, nivel: Int = 0, alSeguir: Boolean = false): AccessibilityNodeInfo? {
 		if (nivel > 30) return null
-		if (raiz.isScrollable && raiz.isVisibleToUser && raiz.rangeInfo == null && (accion == null || raiz.actionList.any { it.id == accion })) return raiz
+		if (raiz.isScrollable && raiz.isVisibleToUser && raiz.rangeInfo == null && (accion == null || raiz.actionList.any { it.id == accion }) &&
+			(!alSeguir || seSigueDesplazando(raiz))) return raiz
 		for (i in 0 until raiz.childCount) {
 			val h = runCatching { raiz.getChild(i) }.getOrNull() ?: continue
-			primerDesplazable(h, accion, nivel + 1)?.let { return it }
+			primerDesplazable(h, accion, nivel + 1, alSeguir)?.let { return it }
 		}
 		return null
+	}
+
+	/**
+	 * Si [n] es algo que se desplaza para seguir leyendo al llegar al final de lo que se ve: una lista, una cuadrícula,
+	 * una página. No un paginador ni sus pestañas (se pasaba a la pestaña siguiente en silencio, en vez de ir a la barra
+	 * de abajo), ni un campo de texto, ni un selector de rueda (cambiaría su valor), ni un carrusel que enseña una sola
+	 * página cada vez (SandFly d51dc1be8 y b6ef9de0a; TalkBack FILTER_AUTO_SCROLL). Un carrusel de cosas estrechas sí.
+	 */
+	fun seSigueDesplazando(n: AccessibilityNodeInfo): Boolean {
+		if (n.isEditable || esSelectorDeRueda(n)) return false
+		val r = rol(n)
+		if (r == Rol.PAGINADOR || r == Rol.LISTA_PESTANAS) return false
+		val ids = n.actionList.map { it.id }
+		// Solo de lado (sin arriba ni abajo, y con izquierda o derecha): un carrusel. Si su primer elemento ocupa casi todo
+		// el ancho, enseña una página cada vez, como un paginador
+		val vertical = android.R.id.accessibilityActionScrollUp in ids || android.R.id.accessibilityActionScrollDown in ids
+		val lateral = android.R.id.accessibilityActionScrollLeft in ids || android.R.id.accessibilityActionScrollRight in ids
+		val enFila = n.collectionInfo?.let { it.rowCount <= 1 && it.columnCount > 1 } == true
+		if (!vertical && (lateral || enFila)) {
+			val ancho = limites(n).width()
+			val primero = (0 until n.childCount).asSequence().mapNotNull { runCatching { n.getChild(it) }.getOrNull() }.firstOrNull { it.isVisibleToUser }
+			if (primero != null && ancho > 0 && limites(primero).width() >= ancho * 9 / 10) return false
+		}
+		return true
 	}
 
 	/**

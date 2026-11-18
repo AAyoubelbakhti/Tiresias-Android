@@ -320,4 +320,23 @@
 	<string name="accion_estructura_pantalla">Copiar la estructura de la pantalla, sin textos (para contar un fallo)</string>
 	<string name="accion_modo_edicion">Modo edición (moverse por letras, palabras, frases y párrafos, y seleccionar)</string>
 	<string name="accion_edicion_por_partes">Edición por partes</string>
+	<string name="accion_contar_texto">Contar caracteres y palabras</string>
+	<string name="accion_leer_desde_aqui_control">Leer desde aquí solo lo del control de lectura</string>
+	<string name="control_portapapeles">Portapapeles</string>
+	<string name="portapapeles_elemento">%1$s, %2$d de %3$d</string>
+	<string name="contar_y">%1$s y %2$s</string>
+	<plurals name="contar_caracteres">
+		<item quantity="one">%1$d carácter</item>
+		<item quantity="many">%1$d caracteres</item>
+		<item quantity="other">%1$d caracteres</item>
+	</plurals>
+	<plurals name="contar_palabras">
+		<item quantity="one">%1$d palabra</item>
+		<item quantity="many">%1$d palabras</item>
+		<item quantity="other">%1$d palabras</item>
+	</plurals>
+	<string name="lectura_nada_del_control">No hay %1$s desde aquí</string>
+	<string name="accion_preguntar_ia_voz">Preguntar a la IA sobre la pantalla, por voz</string>
+	<string name="gesto_volumen_arriba_una">Una vez volumen arriba</string>
+	<string name="gesto_volumen_abajo_una">Una vez volumen abajo</string>
 </resources>

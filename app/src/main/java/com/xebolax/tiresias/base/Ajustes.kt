@@ -277,10 +277,25 @@ class Ajustes(contexto: Context) {
 
 	val intensidadVibracion: Int get() = entero(Claves.INTENSIDAD_VIBRACION, 60)
 
+	/** Cómo vibra: automático (efectos si el vibrador los tiene), efectos, pulsos con fuerza o encendido y apagado. */
+	val tipoVibracion: String get() = cadena(Claves.TIPO_VIBRACION, VIBRACION_AUTOMATICA)
+
+	/** Incluir los segundos al decir la hora. */
+	val horaConSegundos: Boolean get() = logico(Claves.HORA_CON_SEGUNDOS, false)
+
+	/** La hora de ahora como se dice: con los segundos si se ha elegido (SandFly 793931e55). */
+	fun horaAhora(): String = java.text.DateFormat.getTimeInstance(if (horaConSegundos) java.text.DateFormat.MEDIUM else java.text.DateFormat.SHORT).format(java.util.Date())
+
 	// --- Navegación, gestos y teclado -----------------------------------------------------
 
 	/** Al llegar al final, seguir por el principio (con un sonido que lo avisa). */
 	val darVuelta: Boolean get() = logico(Claves.DAR_VUELTA, false)
+
+	/** Cada texto de dentro de un elemento que se pulsa, su propia parada (SandFly 8d046e83b). */
+	val textoDentroAparte: Boolean get() = logico(Claves.TEXTO_DENTRO_APARTE, false)
+
+	/** Con «dar la vuelta», el primer deslizamiento al final suena el borde y el siguiente da la vuelta (SandFly bf8611c15). */
+	val pararAntesDeVuelta: Boolean get() = logico(Claves.PARAR_ANTES_VUELTA, true)
 
 	/** Recordar el elemento enfocado de cada ventana y volver a él (también al pulsar Atrás). */
 	val recordarFoco: Boolean get() = logico(Claves.RECORDAR_FOCO, true)
@@ -401,6 +416,9 @@ class Ajustes(contexto: Context) {
 	val accionesDelTexto: Boolean get() = logico(Claves.ACCIONES_DEL_TEXTO, true)
 	/** Que las apps que graban o emiten la pantalla no puedan recoger la voz ni los sonidos de Tiresias. */
 	val vozSinCaptura: Boolean get() = logico(Claves.VOZ_SIN_CAPTURA, false)
+
+	/** Un poco de silencio cuando la salida de las voces incluidas arranca (móviles que suben el sonido poco a poco). */
+	val vozSilencioInicio: Boolean get() = logico(Claves.VOZ_SILENCIO_INICIO, false)
 	/** Decir al enchufar y desenchufar el cargador y cuando la batería está llena. */
 	val avisosCargador: Boolean get() = logico(Claves.AVISOS_CARGADOR, false)
 	/** Al encender con el móvil bloqueado, unos segundos sin lo que dice solo la pantalla de bloqueo (Backtalk 312). */
@@ -562,6 +580,9 @@ class Ajustes(contexto: Context) {
 	/** Un «Leer más» al final de un mensaje se pulsa solo al llegar a él, y se lee el resto (WhatsApp, Telegram...). */
 	val leerMasSolo: Boolean get() = logico(Claves.LEER_MAS_SOLO, true)
 	val brailleVibrarPuntos: Boolean get() = logico(Claves.BRAILLE_VIBRAR_PUNTOS, false)
+
+	/** Con la calibración puesta, mover los puntos poco a poco hacia donde caen los dedos al escribir. */
+	val brailleAjustarPuntos: Boolean get() = logico(Claves.BRAILLE_AJUSTAR_PUNTOS, false)
 
 	/** Con un deslizador enfocado, las teclas de volumen cambian su valor. */
 	val volumenDeslizadores: Boolean get() = logico(Claves.VOLUMEN_DESLIZADORES, false)
@@ -807,6 +828,10 @@ class Ajustes(contexto: Context) {
 		const val TECLAS_CAMPOS = "campos"
 		const val TECLAS_NUNCA = "nunca"
 		const val DESPLAZAR_NORMAL = "normal"
+		const val VIBRACION_AUTOMATICA = "automatica"
+		const val VIBRACION_EFECTOS = "efectos"
+		const val VIBRACION_PULSOS = "pulsos"
+		const val VIBRACION_ENCENDIDO = "encendido"
 		const val DESPLAZAR_SIN_SONIDO = "sin_sonido"
 		const val DESPLAZAR_ANTICIPADO = "anticipado"
 		/** La disposición del teclado de NVDA: de escritorio (teclado numérico) o de portátil. */
@@ -908,6 +933,7 @@ object Claves {
 	const val REPARAR_SOLO = "reparar_solo"
 	const val ACCIONES_DEL_TEXTO = "acciones_del_texto"
 	const val VOZ_SIN_CAPTURA = "voz_sin_captura"
+	const val VOZ_SILENCIO_INICIO = "voz_silencio_inicio"
 	const val AVISOS_CARGADOR = "avisos_cargador"
 	const val PALABRAS_CALLADAS = "palabras_calladas"
 	const val BRAILLE_INTRO_ENVIA = "braille_intro_envia"
@@ -935,7 +961,11 @@ object Claves {
 	const val SONIDO_POSICIONAL = "sonido_posicional"
 	const val VIBRACION = "vibracion"
 	const val INTENSIDAD_VIBRACION = "intensidad_vibracion"
+	const val TIPO_VIBRACION = "tipo_vibracion"
+	const val HORA_CON_SEGUNDOS = "hora_con_segundos"
 	const val DAR_VUELTA = "dar_vuelta"
+	const val TEXTO_DENTRO_APARTE = "texto_dentro_aparte"
+	const val PARAR_ANTES_VUELTA = "parar_antes_vuelta"
 	const val RECORDAR_FOCO = "recordar_foco"
 	const val RETARDO_EXPLORACION = "retardo_exploracion"
 	const val GESTOS = "gestos"
@@ -983,6 +1013,7 @@ object Claves {
 	/** Si ya se ha puesto la velocidad de Eloquence en su escala nueva ([Ajustes.normalizarEloquence]). */
 	const val ELOQUENCE_VELOCIDAD_NORMAL = "eloquence_velocidad_normal"
 	const val BRAILLE_VIBRAR_PUNTOS = "braille_vibrar_puntos"
+	const val BRAILLE_AJUSTAR_PUNTOS = "braille_ajustar_puntos"
 	const val SONIDO_ESPERA = "sonido_espera"
 	const val AVISO_ESPERA = "aviso_espera"
 	const val ESCRIBIR_AL_LEVANTAR = "escribir_al_levantar"

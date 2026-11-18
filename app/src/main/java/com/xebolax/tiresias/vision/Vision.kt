@@ -282,6 +282,21 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 		return true
 	}
 
+	/** Si se puede preguntar a la IA sobre la pantalla ahora (hay captura y una IA elegida); si no, lo dice. */
+	fun puedePreguntar(): Boolean {
+		if (!necesitaCaptura()) return false
+		if (AsistenteIA.elegir(servicio) == null) {
+			lector.decir(R.string.ia_sin_configurar)
+			return false
+		}
+		return true
+	}
+
+	/** Pregunta [pregunta] (dictada) a la IA sobre la pantalla entera. */
+	fun preguntarCon(pregunta: String) {
+		if (pregunta.isNotBlank()) lector.manejador.postDelayed({ describir(null, pregunta, R.string.ia_titulo_pregunta) }, 300)
+	}
+
 	private fun describir(zona: Rect?, pregunta: String, titulo: Int): Boolean {
 		if (!necesitaCaptura()) return false
 		val proveedor = AsistenteIA.elegir(servicio)

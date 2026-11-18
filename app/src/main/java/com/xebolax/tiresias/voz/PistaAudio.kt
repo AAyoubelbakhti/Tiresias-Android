@@ -59,7 +59,21 @@ class PistaAudio(atributosIniciales: AudioAttributes) {
 			while (desde < muestras.size) {
 				if (cortada || !sigue()) return true
 				// (un corte puede haberla pausado justo al empezar la frase: pausada no se vacía nunca)
-				if (p.playState != AudioTrack.PLAYSTATE_PLAYING) p.play()
+				if (p.playState != AudioTrack.PLAYSTATE_PLAYING) {
+					p.play()
+					// Algunos móviles (un Vivo) suben el sonido poco a poco al arrancar la salida y se comen las letras sueltas
+					// (Dharius): con el ajuste, un poco de silencio delante, que es lo que se pierde
+					if (silencioAlEmpezar && desde == 0) {
+						val silencio = ShortArray(hz * SILENCIO_INICIO_MS / 1000)
+						var puesto = 0
+						val hasta = SystemClock.uptimeMillis() + PISTA_COLGADA_MS
+						while (puesto < silencio.size && !cortada && SystemClock.uptimeMillis() < hasta) {
+							val n = p.write(silencio, puesto, silencio.size - puesto, AudioTrack.WRITE_NON_BLOCKING)
+							if (n < 0) break
+							if (n == 0) SystemClock.sleep(ESPERA_SITIO_MS) else { puesto += n; entregadas += n }
+						}
+					}
+				}
 				val n = minOf(BLOQUE, muestras.size - desde)
 				// Sin bloquear: una escritura que espera sitio se queda ahí para siempre si la salida de audio se cuelga,
 				// y la voz se quedaría muda hasta reiniciar
@@ -337,6 +351,10 @@ class PistaAudio(atributosIniciales: AudioAttributes) {
 		 * multimedia, sí, salvo con esto (Android 10+).
 		 */
 		@Volatile var sinCaptura = false
+
+		/** «Silencio al empezar a hablar» (Ajustes, Voz): unos milisegundos de silencio cuando la salida arranca. */
+		@Volatile var silencioAlEmpezar = false
+		private const val SILENCIO_INICIO_MS = 120
 
 		fun AudioAttributes.Builder.sinCapturaSiSeQuiere(): AudioAttributes.Builder =
 			if (Build.VERSION.SDK_INT >= 29 && sinCaptura) setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE) else this

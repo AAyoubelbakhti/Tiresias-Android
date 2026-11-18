@@ -101,6 +101,7 @@ class NavegacionTest : PruebaTiresias() {
 	fun darLaVueltaAlFinal() {
 		abrirMuestrario()
 		ajuste("dar_vuelta", true)
+		ajuste("parar_antes_vuelta", false)
 		assertNotNull(irA("Mensaje 1,"))
 		val m = marca()
 		s.ejecutarPrueba(Accion.LISTA_FINAL)
@@ -109,6 +110,23 @@ class NavegacionTest : PruebaTiresias() {
 		// Tras el último de todos, da la vuelta: vuelve a lo primero que hay en la pantalla
 		val d = hacer(Accion.SIGUIENTE, 1200)
 		assertTrue("No dio la vuelta: «$d»", !d.startsWith("Mensaje 40") && d.isNotBlank())
+	}
+
+	@Test
+	fun seParaEnElUltimoAntesDeDarLaVuelta() {
+		abrirMuestrario()
+		ajuste("dar_vuelta", true)
+		ajuste("parar_antes_vuelta", true)
+		assertNotNull(irA("Mensaje 1,"))
+		val m = marca()
+		s.ejecutarPrueba(Accion.LISTA_FINAL)
+		assertNotNull(dichoQue(15_000, m) { it.startsWith("Mensaje 40") })
+		SystemClock.sleep(800)
+		// El primer deslizamiento tras el último no dice nada nuevo (suena el borde); el segundo da la vuelta
+		val primero = hacer(Accion.SIGUIENTE, 1200)
+		assertTrue("Dio la vuelta sin pararse: «$primero»", primero.isBlank() || primero.startsWith("Mensaje 40"))
+		val segundo = hacer(Accion.SIGUIENTE, 1200)
+		assertTrue("No dio la vuelta al segundo: «$segundo»", !segundo.startsWith("Mensaje 40") && segundo.isNotBlank())
 	}
 
 	@Test

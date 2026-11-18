@@ -50,6 +50,10 @@
 			android:exported="true"
 			android:label="Inicio" />
 		<activity
+			android:name=".ActividadAlarma"
+			android:exported="true"
+			android:label="Muestrario alarma" />
+		<activity
 			android:name=".ActividadMalHecha"
 			android:exported="true"
 			android:label="Mal hecha" />

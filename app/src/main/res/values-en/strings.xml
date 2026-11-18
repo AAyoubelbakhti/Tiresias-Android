@@ -184,4 +184,5 @@
 	<string name="ui_frase_prueba">Hello, I\'m Tiresias. This is how I sound with these settings.</string>
 	<string name="ui_ajustes_voz_sistema">System text-to-speech settings</string>
 	<string name="ui_mas_en_menu">Everything else is in the side menu: Open menu, at the top left.</string>
+	<string name="gestos_toque_directo_al_entrar">Direct touch: touches go to the app. The top and bottom bars can still be explored; to turn it off, hold both volume keys.</string>
 </resources>

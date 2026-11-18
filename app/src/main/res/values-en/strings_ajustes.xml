@@ -533,4 +533,21 @@
 	<string name="aj_motor_del_sistema">Whatever the system uses (now %1$s)</string>
 	<string name="aj_motor_sistema_elegido">%1$s (system, the one chosen on the phone)</string>
 	<string name="aj_motor_espeak_corto">eSpeak NG</string>
+	<string name="aj_tipo_vibracion">Vibration type</string>
+	<string-array name="tipo_vibracion_nombres">
+		<item>Automatic</item>
+		<item>Haptic effects (crisp)</item>
+		<item>Pulses with strength</item>
+		<item>On and off</item>
+	</string-array>
+	<string name="aj_hora_con_segundos">Say the time with seconds</string>
+	<string name="aj_hora_con_segundos_res">When the screen turns on, on unlock, in the system status and when asking for the time</string>
+	<string name="aj_parar_antes_vuelta">Stop at the last item before wrapping</string>
+	<string name="aj_parar_antes_vuelta_res">With “Wrap around at the end”: at the end the edge sound plays; another swipe in the same direction wraps around</string>
+	<string name="aj_texto_dentro_aparte">Focus text inside items separately</string>
+	<string name="aj_texto_dentro_aparte_res">Each text inside a button or a row is its own stop (for rows that hide their text). Double tap presses the button or the row</string>
+	<string name="aj_braille_ajustar_puntos">Adjust dot positions while typing</string>
+	<string name="aj_braille_ajustar_puntos_res">With calibrated dots, each typed letter moves them slightly towards where your fingers land, in case your hand drifts</string>
+	<string name="aj_voz_silencio_inicio">Silence before speaking</string>
+	<string name="aj_voz_silencio_inicio_res">For phones that cut the start of single letters when spelling: the built-in voices start with a moment of silence</string>
 </resources>

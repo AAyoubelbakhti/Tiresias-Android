@@ -131,6 +131,10 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 	@Volatile private var idiomaActual: Locale? = null
 	/** Las voces elegidas por idioma ([com.xebolax.tiresias.nucleo.VocesPorIdioma]); vacío, las del motor. */
 	@Volatile private var vozElegida = ""
+	/** Desde cuándo espera el motor a empezar alguna frase (0: ha respondido a la última). */
+	@Volatile private var sinRespuestaDesde = 0L
+	/** Las frases seguidas que se cortaron antes de que el motor empezara a decirlas. */
+	@Volatile private var cortesSinEmpezar = 0
 
 	private class Pendiente(val id: String) {
 		val empezado = CountDownLatch(1)
@@ -212,9 +216,9 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 				val guardada = vozElegida
 				if (guardada.isNotEmpty()) {
 					val voces = t.voices.orEmpty()
-					val nombre = com.xebolax.tiresias.nucleo.VocesPorIdioma.para(guardada, idioma.language) { n -> voces.any { it.name == n && it.locale.language == idioma.language } }
+					val nombre = com.xebolax.tiresias.nucleo.VocesPorIdioma.para(guardada, idioma.language) { n -> voces.any { it.name == n && com.xebolax.tiresias.nucleo.VocesPorIdioma.mismoIdioma(it.locale.language, idioma.language) } }
 					// Solo una voz de ese idioma (la de otro idioma leería este con su pronunciación)
-					if (nombre != null) voces.firstOrNull { it.name == nombre && it.locale.language == idioma.language }?.let { t.voice = it }
+					if (nombre != null) voces.firstOrNull { it.name == nombre && com.xebolax.tiresias.nucleo.VocesPorIdioma.mismoIdioma(it.locale.language, idioma.language) }?.let { t.voice = it }
 				}
 			}
 			t.setSpeechRate(velocidad / 100f)
@@ -225,18 +229,28 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 			// En una llamada, el volumen propio de la voz (Can Talk): solo cuando baja, para no cambiar nada fuera de ellas
 			VozEnLlamadas.ganancia.takeIf { it < 1f }?.let { params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, it) }
 			if (t.speak(texto, TextToSpeech.QUEUE_FLUSH, params, p.id) != TextToSpeech.SUCCESS) return Resultado.FALLO
-			val inicio = SystemClock.uptimeMillis()
+			val ahora = SystemClock.uptimeMillis()
+			// Un motor colgado mientras la persona sigue deslizando: cada frase nueva cortaba la espera de la anterior y
+			// nunca se llegaba a los 3 s, así que no se pasaba a otra voz. Tras tres frases cortadas sin que el motor
+			// haya empezado ninguna, la espera cuenta desde la primera de ellas (SandFly b5e65f215)
+			val inicio = if (cortesSinEmpezar >= CORTES_PARA_SEGUIR_ESPERA && sinRespuestaDesde > 0) sinRespuestaDesde else ahora
+			if (sinRespuestaDesde == 0L) sinRespuestaDesde = ahora
 			while (!p.empezado.await(20, TimeUnit.MILLISECONDS)) {
 				if (!sigue()) {
 					t.stop()
+					cortesSinEmpezar++
 					return Resultado.CORTADO
 				}
 				if (SystemClock.uptimeMillis() - inicio > ESPERA_INICIO_MS) {
-					Registro.w(ETIQUETA, "El motor $id no empezó a hablar en $ESPERA_INICIO_MS ms")
+					Registro.w(ETIQUETA, "El motor $id no empezó a hablar en $ESPERA_INICIO_MS ms ($cortesSinEmpezar frases cortadas antes)")
 					t.stop()
+					sinRespuestaDesde = 0L
+					cortesSinEmpezar = 0
 					return Resultado.FALLO
 				}
 			}
+			sinRespuestaDesde = 0L
+			cortesSinEmpezar = 0
 			if (p.resultado == Resultado.FALLO) return Resultado.FALLO
 			alEmpezar()
 			while (!p.terminado.await(20, TimeUnit.MILLISECONDS)) {
@@ -273,6 +287,8 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 		private const val ETIQUETA = "MotorSistema"
 		const val ESPERA_ARRANQUE_MS = 4000L
 		const val ESPERA_INICIO_MS = 3000L
+		/** Frases cortadas sin empezar a partir de las cuales la espera ya no vuelve a cero. */
+		private const val CORTES_PARA_SEGUIR_ESPERA = 3
 
 		/** Los motores de voz del sistema instalados (paquete y nombre), sin Tiresias. */
 		/**

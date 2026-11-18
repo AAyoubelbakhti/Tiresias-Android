@@ -36,7 +36,8 @@ class ActividadAcerca : ActividadBase() {
 	}
 
 	private fun compartirRegistro() {
-		val texto = Registro.cabecera(BuildConfig.VERSION_NAME) + Registro.texto()
+		val texto = Registro.cabecera(BuildConfig.VERSION_NAME) + Registro.texto() +
+			com.xebolax.tiresias.nucleo.LimpiezaRegistro.compartible(com.xebolax.tiresias.base.Diagnostico.texto(this))
 		if (texto.isBlank()) {
 			avisar(getString(R.string.acerca_registro_vacio))
 			return

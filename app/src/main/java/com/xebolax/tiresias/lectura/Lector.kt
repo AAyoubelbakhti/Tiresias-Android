@@ -173,7 +173,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	/** La ventana de la que es [tituloVentana]. */
 	private var idVentanaTitulo = -1
 	/** Si hay un teclado en pantalla y desde cuándo no lo hay (un teclado que se rehace al momento no se anuncia otra vez). */
-	private var hayTeclado = false
+	// (si al arrancar ya hay un teclado a la vista, no se anuncia en el primer cambio de ventanas: SandFly 3c20f79ab)
+	private var hayTeclado = runCatching { servicio.windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrDefault(false)
 	private var sinTecladoDesde = 0L
 	private var ultimoSonidoDesplazar = 0L
 
@@ -187,6 +188,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	@Volatile var ayudaEntrada = false
 
 	fun recargarAjustes() = manejador.post {
+		com.xebolax.tiresias.voz.PistaAudio.silencioAlEmpezar = ajustes.vozSilencioInicio
 		// Otro volumen para la voz (Ajustes, Voz, o la acción): se aplica al momento
 		if (com.xebolax.tiresias.voz.PistaAudio.multimedia != ajustes.vozMultimedia || com.xebolax.tiresias.voz.PistaAudio.sinCaptura != ajustes.vozSinCaptura) {
 			com.xebolax.tiresias.voz.PistaAudio.sinCaptura = ajustes.vozSinCaptura
@@ -1131,10 +1133,19 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 
 	/** Pone el foco en [n] sin decirlo (lo dice quien llama: la lectura continua). */
 	fun enfocarSinHablar(n: AccessibilityNodeInfo) {
+		momentoMovido = SystemClock.uptimeMillis()
 		cambiarFoco(n)
 		apuntarPropio(n)
 		runCatching { n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) }
+		// Lo de fuera de la vista (lo siguiente de una página web) se trae a ella, como al enfocar
+		if (!n.isVisibleToUser) {
+			navegador.desplazamientoPropio()
+			runCatching { n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id) }
+		}
 	}
+
+	/** Cuándo puso Tiresias el foco por última vez (los desplazamientos de justo después son de la página, no del usuario). */
+	val momentoFocoPuesto: Long get() = momentoMovido
 
 	private fun apuntarPropio(n: AccessibilityNodeInfo) {
 		dichoAlEnfocar = n
@@ -1597,9 +1608,44 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		// Una contraseña o un dato sensible: lo que se diga de él no va al registro de la variante de pruebas
 		voz.focoSensible = Nodos.sensible(n)
+		// Si arriba, abajo y las teclas de volumen lo ajustan (se mira fuera, para no retrasar lo que se dice; las teclas
+		// llegan al hilo principal, que no debe preguntar a la app)
+		if (anterior != n) {
+			focoAjustable = n.rangeInfo != null
+			manejador.post { if (foco === n) focoAjustable = runCatching { Nodos.ajustableDe(n) != null }.getOrDefault(false) }
+		}
 		if (anterior != n) cambiosFoco++
 		if (anterior != null && anterior != n) apuntarAnterior(anterior)
 		mantenerDeVerdad(n.packageName?.toString() != servicio.packageName && Nodos.esDeMantenerPulsado(n))
+	}
+
+	/** Si lo enfocado es un deslizador, una fila con uno dentro o el número de un selector de rueda. */
+	@Volatile var focoAjustable = false
+		private set
+
+	/** Cuándo cambió el usuario el valor de un deslizador (para distinguirlo de una barra que avanza sola). */
+	@Volatile private var momentoAjuste = 0L
+
+	fun ajustadoPorUsuario() {
+		momentoAjuste = SystemClock.uptimeMillis()
+	}
+
+	/**
+	 * Dice el valor nuevo de [n], que se acaba de ajustar sin tener el foco (un deslizador dentro de la fila
+	 * enfocada, el selector de rueda del número enfocado).
+	 */
+	fun decirValorDe(n: AccessibilityNodeInfo) {
+		runCatching { n.refresh() }
+		if (n.rangeInfo != null) {
+			decirCambioEstado(n)
+			return
+		}
+		// Un selector de rueda: su número está en el campo de dentro
+		val numero = (0 until n.childCount).asSequence().mapNotNull { runCatching { n.getChild(it) }.getOrNull() }
+			.firstOrNull { it.isEditable || it.className?.toString()?.endsWith("EditText") == true }
+			?.let { (it.text ?: it.contentDescription)?.toString() }
+			?: n.contentDescription?.toString() ?: n.text?.toString()
+		if (!numero.isNullOrBlank()) voz.decir(Enunciado(numero, Modo.INTERRUMPIR, Tipo.NAVEGACION))
 	}
 
 	/** Lo último que tuvo el foco antes de perderlo, dónde estaba y cuándo: para seguir desde ahí al deslizar. */
@@ -1653,6 +1699,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			perdido = Perdido(it, Nodos.limites(it), SystemClock.uptimeMillis(), lugarFoco)
 		}
 		foco = null
+		focoAjustable = false
 		voz.focoSensible = false
 		cambiosFoco++
 		mantenerDeVerdad(false)
@@ -1750,6 +1797,11 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		return e.contentDescription?.toString()?.takeIf { it.isNotBlank() } ?: if (clase.contains("Dialog")) textos.getString(R.string.lect_dialogo) else ""
 	}
 
+	/** El paquete del teclado elegido en el móvil (sin preguntar a ninguna app). */
+	private fun paqueteTeclado(): String? = runCatching {
+		android.provider.Settings.Secure.getString(servicio.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)?.substringBefore('/')
+	}.getOrNull()?.takeIf { it.isNotBlank() }
+
 	private fun alCambiarVentanas(e: AccessibilityEvent) {
 		olvidarCaches()
 		// Una ventana que se cierra (un diálogo de la app): el foco vuelve a la de debajo
@@ -1767,6 +1819,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		if (teclado == null && hayTeclado) sinTecladoDesde = ahora
 		hayTeclado = teclado != null
+		// El perfil del teclado que se ve, si tiene uno (lo que es del teclado manda sobre lo de la app)
+		perfiles.alCambiarTeclado(if (teclado != null) paqueteTeclado() else null)
 		// Con «Toque directo en el teclado», los toques en el teclado en pantalla pasan directos a él
 		zonasDelTeclado(teclado)
 	}
@@ -1801,7 +1855,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		// El elemento enfocado cambió de estado o de valor (un deslizador, una casilla pulsada con el teclado)
 		val estado = AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION or (if (Build.VERSION.SDK_INT >= 36) AccessibilityEvent.CONTENT_CHANGE_TYPE_CHECKED or AccessibilityEvent.CONTENT_CHANGE_TYPE_EXPANDED else 0)
-		if (n == foco && tipos and estado != 0) {
+		if (n == foco && tipos and estado != 0 && !avanzaSola(n)) {
 			decirCambioEstado(n)
 		}
 		if (Build.VERSION.SDK_INT >= 34 && tipos and AccessibilityEvent.CONTENT_CHANGE_TYPE_ERROR != 0) {
@@ -1846,6 +1900,10 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		SystemClock.uptimeMillis() - momentoValor < 1500 && ultimoValor.isNotEmpty() && normalizarValor(t) == ultimoValor
 
 	private fun alDesplazar(e: AccessibilityEvent) {
+		// Una barra de progreso o un deslizador que avanza (el audio de WhatsApp mientras suena) también manda
+		// «desplazado»: no es una lista, y sonaba sin parar (Lucerito_Stefi). Ni sonido ni tic, como en TalkBack
+		val origen = e.source
+		if (origen != null && (origen.rangeInfo != null || Nodos.rol(origen).let { it == com.xebolax.tiresias.nucleo.Rol.DESLIZADOR || it == com.xebolax.tiresias.nucleo.Rol.BARRA_PROGRESO })) return
 		navegador.invalidar(e.windowId)
 		descritos.clear()
 		// Android guarda en caché los nodos (API 33): tras desplazar, los de esta lista ya no valen (TalkBack hace lo mismo)
@@ -1890,6 +1948,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		if (n != foco || ahora - momentoDicho <= 300 || !(n.rangeInfo != null || Nodos.rol(n) == com.xebolax.tiresias.nucleo.Rol.DESPLEGABLE)) return
 		// Los ecualizadores mandan «seleccionado» cada 10 ms: como mucho uno por segundo (Backtalk) y el plazo de la app
 		if (ahora - ultimaSeleccion < 1000 || !pasaPlazo(n, ahora)) return
+		// La barra de un audio o un vídeo que avanza sola mientras suena: no se dice cada segundo (Lucerito_Stefi)
+		if (avanzaSola(n)) return
 		// El mismo valor otra vez (el ecualizador de Samsung repite su «seleccionado» sin cambiar nada: CAN Talk): no se repite
 		val clave = "${n.hashCode()}|${n.rangeInfo?.current}|${n.text}|${if (Build.VERSION.SDK_INT >= 30) n.stateDescription else ""}"
 		if (clave == ultimaClaveSeleccion) return
@@ -1900,6 +1960,15 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 
 	private var ultimaSeleccion = 0L
 	private var ultimaClaveSeleccion = ""
+
+	/**
+	 * Si [n] es un deslizador que cambia de valor solo (la barra de un mensaje de voz o de un vídeo mientras
+	 * suena), y no porque el usuario lo esté ajustando: como en TalkBack, su valor no se dice a cada paso. Se
+	 * dice al enfocarlo y al ajustarlo (durante los 3 s siguientes a un cambio del usuario).
+	 */
+	private fun avanzaSola(n: AccessibilityNodeInfo): Boolean =
+		Nodos.rol(n) == com.xebolax.tiresias.nucleo.Rol.DESLIZADOR && SystemClock.uptimeMillis() - momentoAjuste > AJUSTE_RECIENTE_MS &&
+			SystemClock.uptimeMillis() - momentoTecla > AJUSTE_RECIENTE_MS
 
 	/** Foco de entrada (teclado físico, Tab): se lee si no hay foco de accesibilidad que lo diga. */
 	private fun alEnfocarEntrada(e: AccessibilityEvent) {
@@ -2100,6 +2169,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		private const val PROTEGER_FOCO_MS = 600L
 		/** Lo que vale el sitio del foco que la app ha quitado para seguir desde ahí al deslizar. */
 		private const val PERDIDO_VALE_MS = 120_000L
+		/** Lo que dura un ajuste del usuario: los cambios de valor de ese rato son suyos, no de la app. */
+		private const val AJUSTE_RECIENTE_MS = 3_000L
 		/** Lo que como mucho dura una nota de voz para no anunciar las ventanas de su app mientras graba. */
 		private const val GRABACION_MAXIMA_MS = 15 * 60_000L
 		/** Lo que puede tardar la app en grabar tras poner el dedo en el botón (o adelantarse un poco). */

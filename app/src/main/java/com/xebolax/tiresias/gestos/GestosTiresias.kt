@@ -130,14 +130,32 @@ class GestosTiresias(private val lector: Lector) {
 		// Con la ayuda de otra persona o una superficie braille encima, toda la pantalla pasa siempre
 		if (ayuda || superficie) return
 		val pausado = com.xebolax.tiresias.base.Ajustes(servicio).toqueDirectoPausado
-		val quiere = paquete != null && !pausado && preferencias.getBoolean(paquete, false)
-		if (quiere && toqueDirectoEn != paquete) ponerToqueDirecto(paquete)
+		val quiere = paquete != null && !pausado && preferencias.getBoolean(paquete, pideToqueDirecto(paquete))
+		if (quiere && toqueDirectoEn != paquete) {
+			ponerToqueDirecto(paquete)
+			// Al entrar en una app con el toque directo puesto (un juego), se avisa de cómo salir
+			lector.decir(R.string.gestos_toque_directo_al_entrar)
+		}
 		else if (!quiere && toqueDirectoEn != null) ponerToqueDirecto(null)
 		if (!quiere) {
 			val zona = paquete?.let { zonasDeApps[it] }.takeIf { !pausado }
 			zonaDeApp = zona != null
 			ponerRegion(zona)
 		}
+	}
+
+	/** Las apps ya miradas por si piden el toque directo en su manifiesto. */
+	private val pidenToqueDirecto = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+	/**
+	 * Si [paquete] pide el toque directo en su manifiesto: los juegos hechos con NVGT llevan
+	 * `dev.nvgt.capability.DIRECT_TOUCH` (SandFly f79f854c1). Vale mientras el usuario no lo cambie para esa app.
+	 */
+	private fun pideToqueDirecto(paquete: String): Boolean = pidenToqueDirecto.getOrPut(paquete) {
+		runCatching {
+			val info = servicio.packageManager.getApplicationInfo(paquete, android.content.pm.PackageManager.GET_META_DATA)
+			info.metaData?.containsKey("dev.nvgt.capability.DIRECT_TOUCH") == true
+		}.getOrDefault(false)
 	}
 
 	/** La app de delante y las zonas que las apps han marcado para el toque directo (con la API). */
@@ -177,8 +195,35 @@ class GestosTiresias(private val lector: Lector) {
 	private fun ponerToqueDirecto(paquete: String?) {
 		toqueDirectoEn = paquete
 		pasoActivo = paquete != null
-		region(paquete != null)
+		if (paquete == null) region(false) else regionDeApp()
 	}
+
+	/**
+	 * La zona del toque directo de una app: toda la pantalla menos las ventanas del sistema (la barra de estado y la
+	 * de navegación), como SandFly. Así se puede explorar la barra y pulsar Inicio o Atrás para salir del juego.
+	 */
+	private fun regionDeApp() {
+		if (Build.VERSION.SDK_INT < 30) return
+		try {
+			val limites = servicio.getSystemService(android.view.WindowManager::class.java)?.maximumWindowMetrics?.bounds
+			val ancho = limites?.width() ?: servicio.resources.displayMetrics.widthPixels
+			val alto = limites?.height() ?: servicio.resources.displayMetrics.heightPixels
+			val r = Region(0, 0, ancho, alto)
+			for (v in runCatching { servicio.windows }.getOrDefault(emptyList())) {
+				if (v.type != android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM) continue
+				val b = android.graphics.Rect().also { v.getBoundsInScreen(it) }
+				// (solo las barras: una franja pegada a un borde, no la persiana entera)
+				if (!b.isEmpty && b.height() < alto / 4 && (b.top <= 0 || b.bottom >= alto)) r.op(b, Region.Op.DIFFERENCE)
+			}
+			fijarRegion(r)
+		} catch (e: Exception) {
+			Registro.w(ETIQUETA, "No se pudo poner el toque directo de la app", e)
+			region(true)
+		}
+	}
+
+	/** Si [paquete] tiene el toque directo puesto (en su perfil, o porque lo pide la app). */
+	fun toqueDirectoGuardado(paquete: String): Boolean = preferencias.getBoolean(paquete, pideToqueDirecto(paquete))
 
 	/** Quita cualquier paso de toques (modo seguro y teclas de volumen). */
 	fun restablecer() {

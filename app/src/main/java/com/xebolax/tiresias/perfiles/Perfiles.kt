@@ -141,22 +141,41 @@ class Perfiles(contexto: Context, private val lector: Lector? = null) {
 		lector?.recargarAjustes()
 	}
 
-	/** La velocidad que vale ahora (la del perfil de la app, si la tiene). */
-	fun velocidad(general: Int): Int = appActual?.let { deApp(it)?.velocidad } ?: general
+	/** El teclado en pantalla que se ve ahora (su paquete), o null si no hay ninguno. */
+	@Volatile private var tecladoActual: String? = null
+
+	/**
+	 * Perfiles por teclado (SandFly f173fe7f7): mientras se ve el teclado [paquete] y tiene perfil, lo que cambia ese
+	 * perfil manda sobre el de la app (por ejemplo, otra velocidad o el eco solo con el teclado braille). null: sin teclado.
+	 */
+	fun alCambiarTeclado(paquete: String?) {
+		if (paquete == tecladoActual) return
+		val antes = tecladoActual?.let { deApp(it) }
+		tecladoActual = paquete
+		// Solo si alguno de los dos teclados tiene perfil hay algo que cambiar
+		if (antes != null || paquete?.let { deApp(it) } != null) lector?.recargarAjustes()
+	}
+
+	/** Lo que dice el perfil del teclado que se ve, o si no lo dice, el de la app de delante. */
+	private fun <T> deAhora(campo: (PerfilApp) -> T?): T? =
+		tecladoActual?.let { deApp(it) }?.let(campo) ?: appActual?.let { deApp(it) }?.let(campo)
+
+	/** La velocidad que vale ahora (la del perfil del teclado o de la app, si la tienen). */
+	fun velocidad(general: Int): Int = deAhora { it.velocidad } ?: general
 
 	/** La verbosidad que vale ahora: la general o el nivel del perfil de la app. */
 	fun verbosidad(general: com.xebolax.tiresias.nucleo.Verbosidad): com.xebolax.tiresias.nucleo.Verbosidad {
-		val nivel = appActual?.let { deApp(it)?.verbosidad } ?: return general
+		val nivel = deAhora { it.verbosidad } ?: return general
 		val n = Ajustes.enumDe(nivel, com.xebolax.tiresias.nucleo.NivelVerbosidad.ALTA)
 		return if (n == com.xebolax.tiresias.nucleo.NivelVerbosidad.PERSONALIZADA) general else com.xebolax.tiresias.nucleo.Verbosidad.de(n).copy(orden = general.orden)
 	}
 
 	/** La puntuación del perfil de la app, o null para la general. */
 	fun puntuacion(): com.xebolax.tiresias.nucleo.NivelPuntuacion? =
-		appActual?.let { deApp(it)?.puntuacion }?.let { Ajustes.enumDe(it, com.xebolax.tiresias.nucleo.NivelPuntuacion.ALGUNAS) }
+		deAhora { it.puntuacion }?.let { Ajustes.enumDe(it, com.xebolax.tiresias.nucleo.NivelPuntuacion.ALGUNAS) }
 
 	/** El eco del teclado del perfil de la app, o null para el general. */
-	fun ecoTeclado(): String? = appActual?.let { deApp(it)?.ecoTeclado }
+	fun ecoTeclado(): String? = deAhora { it.ecoTeclado }
 
 	// --- Perfiles con nombre ----------------------------------------------------------------
 

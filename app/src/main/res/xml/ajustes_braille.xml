@@ -20,6 +20,7 @@
 	<SwitchPreferenceCompat app:key="braille_sensor" app:title="@string/aj_braille_sensor" app:summary="@string/aj_braille_sensor_res" app:defaultValue="false" />
 	<ListPreference app:key="braille_eco" app:title="@string/aj_braille_eco" app:entries="@array/braille_eco_nombres" app:entryValues="@array/braille_eco_valores" app:defaultValue="letras" app:useSimpleSummaryProvider="true" />
 	<SwitchPreferenceCompat app:key="braille_vibrar_puntos" app:title="@string/aj_braille_vibrar_puntos" app:defaultValue="false" />
+	<SwitchPreferenceCompat app:key="braille_ajustar_puntos" app:title="@string/aj_braille_ajustar_puntos" app:summary="@string/aj_braille_ajustar_puntos_res" app:defaultValue="false" />
 	<SwitchPreferenceCompat app:key="braille_mayuscula_auto" app:title="@string/aj_braille_mayuscula_auto" app:summary="@string/aj_braille_mayuscula_auto_res" app:defaultValue="false" />
 	<Preference app:key="braille_calibracion" app:title="@string/aj_braille_calibracion" />
 	<Preference app:key="braille_gestos" app:title="@string/aj_braille_gestos" app:summary="@string/aj_braille_gestos_res" />

@@ -303,13 +303,14 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 			return true
 		}
 		// Un deslizador enfocado: las teclas cambian su valor (con la pantalla encendida: apagada, el volumen de siempre)
-		if (lector.ajustes.volumenDeslizadores && lector.foco?.rangeInfo != null && pantallaEncendida()) {
+		if (lector.ajustes.volumenDeslizadores && lector.focoAjustable && pantallaEncendida()) {
 			if (e.action == KeyEvent.ACTION_DOWN) alAccion(if (arriba) Accion.VALOR_MAS else Accion.VALOR_MENOS)
 			return true
 		}
 		val larga = accionDe(if (arriba) Gesto.VOLUMEN_ARRIBA_MANTENIDO else Gesto.VOLUMEN_ABAJO_MANTENIDO)
 		val triple = accionDe(if (arriba) Gesto.VOLUMEN_ARRIBA_TRIPLE else Gesto.VOLUMEN_ABAJO_TRIPLE)
-		if (larga == Accion.NINGUNA && triple == Accion.NINGUNA) {
+		val una = accionDe(if (arriba) Gesto.VOLUMEN_ARRIBA_UNA else Gesto.VOLUMEN_ABAJO_UNA)
+		if (larga == Accion.NINGUNA && triple == Accion.NINGUNA && una == Accion.NINGUNA) {
 			// Leyendo de seguido, el volumen de la voz sin cortar la lectura (como TalkBack); si no, el del sistema
 			return if (e.action == KeyEvent.ACTION_DOWN && lector.continua.leyendo) volumenDeLaVoz(e, arriba) else false
 		}
@@ -327,15 +328,15 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 			return true
 		}
 		if (e.action != KeyEvent.ACTION_UP || volumenLarga) return true
-		// Una pulsación corta: si hay triple asignada, se espera a ver si vienen más
-		if (triple == Accion.NINGUNA) {
+		// Una pulsación corta: si hay triple (o una sola) asignada, se espera a ver si vienen más
+		if (triple == Accion.NINGUNA && una == Accion.NINGUNA) {
 			cambiarVolumen(arriba, 1)
 			return true
 		}
 		toquesVolumen.removeAll { ahora - it > TRIPLE_MS }
 		toquesVolumen += ahora
 		volumenPendiente?.let { lector.manejador.removeCallbacks(it) }
-		if (toquesVolumen.size >= 3) {
+		if (toquesVolumen.size >= 3 && triple != Accion.NINGUNA) {
 			toquesVolumen.clear()
 			alAccion(triple)
 			return true
@@ -343,7 +344,8 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 		val veces = toquesVolumen.size
 		val r = Runnable {
 			toquesVolumen.clear()
-			cambiarVolumen(arriba, veces)
+			// Una sola pulsación con su acción: la acción; dos seguidas, el volumen dos pasos
+			if (veces == 1 && una != Accion.NINGUNA) alAccion(una) else cambiarVolumen(arriba, veces)
 		}
 		volumenPendiente = r
 		lector.manejador.postDelayed(r, TRIPLE_MS)
@@ -353,6 +355,9 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 	/** El volumen como lo cambiaría el sistema (el flujo que suena ahora, con su barra en pantalla). */
 	private fun cambiarVolumen(arriba: Boolean, veces: Int) {
 		val audio = lector.servicio.getSystemService(android.media.AudioManager::class.java) ?: return
+		// Lo que suena en una sesión multimedia (Spotify, YouTube, un Chromecast): su volumen. Pedido desde Tiresias, que
+		// acaba de hablar, Android cambiaba el de la voz o no llegaba a una sesión remota (SandFly 86137ed80)
+		if (volumenDeSesion(audio, arriba, veces)) return
 		repeat(veces) {
 			runCatching {
 				audio.adjustSuggestedStreamVolume(
@@ -364,6 +369,38 @@ class Teclado(private val lector: Lector, private val alAccion: (Accion) -> Unit
 		}
 	}
 
+
+	/**
+	 * Si suena algo en una sesión multimedia, cambia su volumen: el de la sesión remota (un Chromecast) o el flujo de
+	 * la sesión local. Necesita el acceso a las notificaciones (la lista de sesiones se pide con él). false si no hay
+	 * ninguna sonando o no se puede: entonces, como siempre.
+	 */
+	private fun volumenDeSesion(audio: android.media.AudioManager, arriba: Boolean, veces: Int): Boolean = try {
+		val c = lector.servicio
+		val gestor = c.getSystemService(android.media.session.MediaSessionManager::class.java)
+		val oyente = android.content.ComponentName(c, com.xebolax.tiresias.servicio.OyenteAvisos::class.java)
+		val sesion = gestor?.getActiveSessions(oyente)?.firstOrNull { it.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING }
+		val direccion = if (arriba) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER
+		val info = sesion?.playbackInfo
+		when {
+			sesion == null || info == null -> false
+			info.playbackType == android.media.session.MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE -> {
+				repeat(veces) { sesion.adjustVolume(direccion, android.media.AudioManager.FLAG_SHOW_UI) }
+				true
+			}
+			else -> {
+				val flujo = if (audio.isMusicActive || android.os.Build.VERSION.SDK_INT < 26) android.media.AudioManager.STREAM_MUSIC else info.audioAttributes.volumeControlStream
+				repeat(veces) { audio.adjustStreamVolume(flujo, direccion, android.media.AudioManager.FLAG_SHOW_UI) }
+				true
+			}
+		}
+	} catch (e: SecurityException) {
+		// Sin el acceso a las notificaciones no se pueden ver las sesiones: como siempre
+		false
+	} catch (e: Exception) {
+		com.xebolax.tiresias.base.Registro.w("Teclado", "No se pudo cambiar el volumen de lo que suena", e)
+		false
+	}
 
 	companion object {
 		const val MANTENER_AMBAS_MS = 1500L

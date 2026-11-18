@@ -316,4 +316,21 @@
 	<string name="accion_estructura_pantalla">Copy the screen structure, without text (to report a problem)</string>
 	<string name="accion_modo_edicion">Edit mode (move by characters, words, sentences and paragraphs, and select)</string>
 	<string name="accion_edicion_por_partes">Edit by parts</string>
+	<string name="accion_contar_texto">Count characters and words</string>
+	<string name="accion_leer_desde_aqui_control">Read from here only the reading control\'s items</string>
+	<string name="control_portapapeles">Clipboard</string>
+	<string name="portapapeles_elemento">%1$s, %2$d of %3$d</string>
+	<string name="contar_y">%1$s and %2$s</string>
+	<plurals name="contar_caracteres">
+		<item quantity="one">%1$d character</item>
+		<item quantity="other">%1$d characters</item>
+	</plurals>
+	<plurals name="contar_palabras">
+		<item quantity="one">%1$d word</item>
+		<item quantity="other">%1$d words</item>
+	</plurals>
+	<string name="lectura_nada_del_control">No %1$s from here</string>
+	<string name="accion_preguntar_ia_voz">Ask the AI about the screen, by voice</string>
+	<string name="gesto_volumen_arriba_una">Press volume up once</string>
+	<string name="gesto_volumen_abajo_una">Press volume down once</string>
 </resources>

@@ -21,7 +21,7 @@ object VocesPorIdioma {
 		for (parte in guardado.split('|')) {
 			val i = parte.indexOf('=')
 			if (i <= 0) continue
-			val idioma = parte.substring(0, i).trim().lowercase()
+			val idioma = parte.substring(0, i).trim().lowercase().let { if (it == SIN_IDIOMA) it else codigo(it) }
 			val voz = parte.substring(i + 1).trim()
 			if (idioma.isNotEmpty() && voz.isNotEmpty()) mapa[idioma] = voz
 		}
@@ -37,9 +37,9 @@ object VocesPorIdioma {
 		val mapa = LinkedHashMap(leer(guardado))
 		mapa.remove(SIN_IDIOMA)?.let { antigua ->
 			// Lo de antes, sin idioma: se queda para el suyo si se sabe por el nombre («es-es-x-...»)
-			idiomaDeNombre(antigua)?.let { if (it != idioma.lowercase()) mapa.putIfAbsent(it, antigua) }
+			idiomaDeNombre(antigua)?.let { if (it != codigo(idioma)) mapa.putIfAbsent(it, antigua) }
 		}
-		if (voz.isNullOrBlank()) mapa.remove(idioma.lowercase()) else mapa[idioma.lowercase()] = voz
+		if (voz.isNullOrBlank()) mapa.remove(codigo(idioma)) else mapa[codigo(idioma)] = voz
 		return escribir(mapa)
 	}
 
@@ -49,11 +49,38 @@ object VocesPorIdioma {
 	 */
 	fun para(guardado: String, idioma: String, esDelIdioma: (String) -> Boolean): String? {
 		val mapa = leer(guardado)
-		mapa[idioma.lowercase()]?.let { return it }
+		mapa[codigo(idioma)]?.let { return it }
 		return mapa[SIN_IDIOMA]?.takeIf(esDelIdioma)
 	}
 
 	/** El idioma por el principio del nombre, si lo lleva («es-es-x-eea-local» → «es»); null si no. */
 	fun idiomaDeNombre(nombre: String): String? =
-		Regex("^([a-z]{2,3})[-_]").find(nombre.lowercase())?.groupValues?.get(1)
+		Regex("^([a-z]{2,3})[-_]").find(nombre.lowercase())?.groupValues?.get(1)?.let { codigo(it) }
+
+	/**
+	 * El idioma de dos letras de [idioma], aunque venga con tres: eSpeak, RHVoice y otros motores dan «spa», «eng»
+	 * o «ger», y su voz salía como de un idioma aparte y no se usaba para el español (SandFly 16ff466a5).
+	 * Lo que no se reconoce se devuelve tal cual, en minúsculas.
+	 */
+	fun codigo(idioma: String): String {
+		val i = idioma.trim().lowercase()
+		if (i.length != 3) return i
+		return BIBLIOGRAFICOS[i] ?: TRES_A_DOS[i] ?: i
+	}
+
+	/** Si [a] y [b] son el mismo idioma, con dos o con tres letras. */
+	fun mismoIdioma(a: String, b: String): Boolean = codigo(a) == codigo(b)
+
+	private val TRES_A_DOS: Map<String, String> by lazy {
+		java.util.Locale.getISOLanguages().mapNotNull { dos ->
+			runCatching { java.util.Locale(dos).isO3Language }.getOrNull()?.takeIf { it.length == 3 }?.let { it to dos }
+		}.toMap()
+	}
+
+	/** Los códigos bibliográficos de ISO 639-2, que Java no devuelve con `isO3Language`. */
+	private val BIBLIOGRAFICOS = mapOf(
+		"alb" to "sq", "arm" to "hy", "baq" to "eu", "bur" to "my", "chi" to "zh", "cze" to "cs", "dut" to "nl",
+		"fre" to "fr", "geo" to "ka", "ger" to "de", "gre" to "el", "ice" to "is", "mac" to "mk", "mao" to "mi",
+		"may" to "ms", "per" to "fa", "rum" to "ro", "slo" to "sk", "tib" to "bo", "wel" to "cy",
+	)
 }

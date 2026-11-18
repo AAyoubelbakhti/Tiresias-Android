@@ -109,7 +109,7 @@ class ActividadVocesSistema : ActividadBase() {
 		tts = nuevo
 	}
 
-	private fun visibles(): List<Voice> = idioma?.let { i -> voces.filter { it.locale.language == i } } ?: voces
+	private fun visibles(): List<Voice> = idioma?.let { i -> voces.filter { VocesPorIdioma.mismoIdioma(it.locale.language, i) } } ?: voces
 
 	private fun nombreIdioma(codigo: String): String = Locale(codigo).getDisplayLanguage(localeApp)
 
@@ -132,13 +132,13 @@ class ActividadVocesSistema : ActividadBase() {
 		if (deTiresias != motor) p.parrafo(getString(R.string.voces_otro_motor, nombreMotor(motor)))
 		val guardado = if (deTiresias == motor) a.vozSistema else ""
 		idioma?.let { i ->
-			val enUso = VocesPorIdioma.para(guardado, i) { n -> voces.any { it.name == n && it.locale.language == i } }
+			val enUso = VocesPorIdioma.para(guardado, i) { n -> voces.any { it.name == n && VocesPorIdioma.mismoIdioma(it.locale.language, i) } }
 			p.parrafo(getString(R.string.voces_en_uso, nombreIdioma(i), enUso?.let { legible(it) } ?: getString(R.string.voces_la_del_motor)))
 		}
 		val lista = visibles()
 		aviso.text = resources.getQuantityString(R.plurals.voces_cuantas, lista.size, lista.size)
 		for (v in lista) {
-			val elegida = VocesPorIdioma.para(guardado, v.locale.language) { false } == v.name
+			val elegida = VocesPorIdioma.para(guardado, VocesPorIdioma.codigo(v.locale.language)) { false } == v.name
 			p.botonSecundario(textoVoz(v, elegida)) { opciones(v) }
 		}
 		idioma?.let { i -> p.botonSecundario(getString(R.string.voces_usar_del_motor, nombreIdioma(i))) { quitar(i) } }
@@ -182,7 +182,7 @@ class ActividadVocesSistema : ActividadBase() {
 	}
 
 	private fun elegirIdioma() {
-		val codigos = voces.map { it.locale.language }.distinct().sortedBy { nombreIdioma(it) }
+		val codigos = voces.map { VocesPorIdioma.codigo(it.locale.language) }.distinct().sortedBy { nombreIdioma(it) }
 		val nombres = listOf(getString(R.string.voces_todos_idiomas)) + codigos.map { nombreIdioma(it) }
 		val actual = idioma?.let { codigos.indexOf(it) + 1 } ?: 0
 		elegirUno(getString(R.string.voces_elegir_idioma), nombres, actual) { i ->
@@ -194,7 +194,7 @@ class ActividadVocesSistema : ActividadBase() {
 	}
 
 	private fun opciones(v: Voice) {
-		val i = nombreIdioma(v.locale.language)
+		val i = nombreIdioma(VocesPorIdioma.codigo(v.locale.language))
 		elegir(legible(v.name), listOf(
 			getString(R.string.voces_usar, i) to { usar(v) },
 			getString(R.string.voces_escuchar) to { muestra(v) },
@@ -204,7 +204,7 @@ class ActividadVocesSistema : ActividadBase() {
 	/** Se lee con la voz [v] una frase corta en su idioma (con el motor de esta pantalla, no con Tiresias). */
 	private fun muestra(v: Voice) {
 		val t = tts ?: return
-		val frase = if (v.locale.language == localeApp.language) getString(R.string.voces_frase_muestra)
+		val frase = if (VocesPorIdioma.mismoIdioma(v.locale.language, localeApp.language)) getString(R.string.voces_frase_muestra)
 			else "${v.locale.getDisplayName(v.locale)}. 1, 2, 3."
 		// Después de que Tiresias diga dónde vuelve el foco al cerrarse la lista de opciones
 		aviso.postDelayed({
@@ -225,10 +225,10 @@ class ActividadVocesSistema : ActividadBase() {
 			// Guarda la velocidad, el tono y las voces del motor de antes y pone las de este
 			a.ajustarVozAlMotor()
 		}
-		a.vozSistema = VocesPorIdioma.poner(a.vozSistema, v.locale.language, v.name)
+		a.vozSistema = VocesPorIdioma.poner(a.vozSistema, VocesPorIdioma.codigo(v.locale.language), v.name)
 		ServicioTiresias.instancia?.recargarAjustes()
 		construir()
-		avisar(getString(R.string.voces_elegida_aviso, nombreIdioma(v.locale.language), legible(v.name)))
+		avisar(getString(R.string.voces_elegida_aviso, nombreIdioma(VocesPorIdioma.codigo(v.locale.language)), legible(v.name)))
 	}
 
 	/** Vuelve a la voz que el motor tenga para [codigo]. */

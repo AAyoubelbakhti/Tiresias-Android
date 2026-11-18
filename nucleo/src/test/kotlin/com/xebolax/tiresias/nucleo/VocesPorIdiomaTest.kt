@@ -38,4 +38,18 @@ class VocesPorIdiomaTest {
 		assertEquals("es", VocesPorIdioma.idiomaDeNombre("es_ES-voz"))
 		assertNull(VocesPorIdioma.idiomaDeNombre("Jorge"))
 	}
+
+	@Test
+	fun losIdiomasDeTresLetrasSonLosDeDos() {
+		assertEquals("es", VocesPorIdioma.codigo("spa"))
+		assertEquals("en", VocesPorIdioma.codigo("ENG"))
+		assertEquals("de", VocesPorIdioma.codigo("ger"))
+		assertEquals("de", VocesPorIdioma.codigo("deu"))
+		assertEquals("zh", VocesPorIdioma.codigo("chi"))
+		assertEquals("es", VocesPorIdioma.codigo("es"))
+		assertEquals("yue", VocesPorIdioma.codigo("yue"))
+		assertEquals(true, VocesPorIdioma.mismoIdioma("spa", "es"))
+		// La voz guardada para el español vale para una voz que dice «spa»
+		assertEquals("v", VocesPorIdioma.para(VocesPorIdioma.poner("", "spa", "v"), "es") { false })
+	}
 }

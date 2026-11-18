@@ -3,7 +3,6 @@ package com.xebolax.tiresias.braille
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.view.HapticFeedbackConstants
 import android.view.View
 import com.xebolax.tiresias.R
 import com.xebolax.tiresias.lectura.Lector
@@ -131,7 +130,7 @@ class ModoPracticaBraille(lector: Lector, private val practica: Practica) : Modo
 			}
 			override fun alApoyar() {
 				val a = lector.ajustes
-				if (a.brailleVibrarPuntos) vista?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+				if (a.brailleVibrarPuntos) lector.vibracion.puntoBraille()
 				if (a.brailleSonarPuntos) lector.sonidos.tocar(Sonido.TECLA, volumen = a.brailleVolumenSonidos / 100f)
 			}
 			override fun anunciar(texto: String) {

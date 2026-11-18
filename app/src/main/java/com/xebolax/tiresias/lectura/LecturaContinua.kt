@@ -25,7 +25,11 @@ class LecturaContinua(private val lector: Lector) {
 	 */
 	val leyendo: Boolean get() = activa && (lector.voz.hablando || android.os.SystemClock.uptimeMillis() - leidoEn < ENTRE_ELEMENTOS_MS)
 
+	/** Lo que se lee (solo los encabezados, solo los enlaces...); null: todo. */
+	@Volatile private var filtro: ((AccessibilityNodeInfo) -> Boolean)? = null
+
 	fun desdeArriba() {
+		filtro = null
 		val raiz = lector.raiz() ?: return
 		val lista = lector.navegador.orden(raiz)
 		if (lista.isEmpty()) return
@@ -33,8 +37,28 @@ class LecturaContinua(private val lector: Lector) {
 	}
 
 	fun desdeAqui() {
+		filtro = null
 		val f = lector.foco ?: return desdeArriba()
 		empezar(f)
+	}
+
+	/**
+	 * Desde el elemento enfocado, solo lo que pasa [soloEsto] (lo del control de lectura elegido: los encabezados, los
+	 * enlaces, los controles...), SandFly 3da381c0d. Con null, todo, como [desdeAqui]. Si lo enfocado no es de ese
+	 * tipo, se empieza por el siguiente que lo sea.
+	 */
+	fun desdeAquiSolo(soloEsto: ((AccessibilityNodeInfo) -> Boolean)?): Boolean {
+		if (soloEsto == null) {
+			desdeAqui()
+			return true
+		}
+		val raiz = lector.raiz() ?: return false
+		val lista = lector.navegador.orden(raiz)
+		val i = lector.foco?.let { lista.indexOf(it) } ?: -1
+		val primero = lista.drop(maxOf(i, 0)).firstOrNull(soloEsto) ?: return false
+		filtro = soloEsto
+		empezar(primero)
+		return true
 	}
 
 	private fun empezar(n: AccessibilityNodeInfo) {
@@ -70,7 +94,7 @@ class LecturaContinua(private val lector: Lector) {
 		val adelante = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
 		val vivo = Nodos.vivo(actual)
 		// La lista en la que está lo leído y que aún puede avanzar (si ya no existe, la de cuando se leyó)
-		val queAvanza = if (vivo) Nodos.desplazableHacia(actual, adelante) else listaLeida?.takeIf { l -> Nodos.vivo(l) && l.actionList.any { it.id == adelante } }
+		val queAvanza = if (vivo) Nodos.desplazableHacia(actual, adelante, alSeguir = true) else listaLeida?.takeIf { l -> Nodos.vivo(l) && l.actionList.any { it.id == adelante } }
 		val siguiente = siguienteDe(lista, actual)
 		// Lo siguiente del orden, si está dentro de esa lista. En Chrome la barra de herramientas va en el árbol
 		// después de la página: al acabar lo que se ve, lo siguiente era la barra y la lectura se iba a ella, en vez
@@ -81,8 +105,8 @@ class LecturaContinua(private val lector: Lector) {
 			return
 		}
 		// Final de lo visible: se desplaza la lista y se sigue (si lo leído ya no existe, la lista en la que estaba)
-		val desplazable = queAvanza ?: (if (vivo) Nodos.desplazable(actual) else listaLeida?.takeIf { Nodos.vivo(it) })
-			?: Nodos.primerDesplazable(raiz, adelante) ?: Nodos.primerDesplazable(raiz)
+		val desplazable = queAvanza ?: (if (vivo) Nodos.desplazable(actual, alSeguir = true) else listaLeida?.takeIf { Nodos.vivo(it) })
+			?: Nodos.primerDesplazable(raiz, adelante, alSeguir = true) ?: Nodos.primerDesplazable(raiz, alSeguir = true)
 		if (desplazamientos < MAXIMO_DESPLAZAMIENTOS && desplazable != null && runCatching { desplazable.performAction(adelante) }.getOrDefault(false)) {
 			val desde = if (vivo) Nodos.limites(actual) else Rect(sitioLeido)
 			lector.manejador.postDelayed({
@@ -90,7 +114,8 @@ class LecturaContinua(private val lector: Lector) {
 				lector.navegador.invalidarTodo()
 				val nueva = lector.navegador.orden(lector.raiz() ?: return@postDelayed parar())
 				val j = nueva.indexOf(actual)
-				val proximo = if (j >= 0) nueva.getOrNull(j + 1) else posterior(nueva, actual, desde)
+				val f = filtro
+				val proximo = if (j >= 0) (if (f == null) nueva.getOrNull(j + 1) else nueva.drop(j + 1).firstOrNull(f)) else posterior(nueva, actual, desde)
 				// Lo siguiente sigue fuera de la lista y la lista aún avanza (la página aún no ha cargado lo de abajo):
 				// se vuelve a desplazar, como mucho unas pocas veces
 				traza("tras desplazar j=$j proximo=${proximo?.className}")
@@ -113,7 +138,8 @@ class LecturaContinua(private val lector: Lector) {
 	 */
 	private fun siguienteDe(lista: List<AccessibilityNodeInfo>, actual: AccessibilityNodeInfo): AccessibilityNodeInfo? {
 		val i = lista.indexOf(actual)
-		if (i >= 0) return lista.getOrNull(i + 1)
+		val f = filtro
+		if (i >= 0) return if (f == null) lista.getOrNull(i + 1) else lista.drop(i + 1).firstOrNull(f)
 		// Si ya no existe (el anuncio que se acaba de leer se ha rehecho), sus límites salen vacíos y «lo primero por
 		// debajo» era lo primero de la ventana: la barra de Chrome. Entonces vale dónde estaba al empezar a leerlo
 		val desde = if (Nodos.vivo(actual)) Nodos.limites(actual).takeUnless { it.isEmpty } ?: Rect(sitioLeido) else Rect(sitioLeido)
@@ -129,7 +155,8 @@ class LecturaContinua(private val lector: Lector) {
 		val zona = contenedor?.takeIf { Nodos.vivo(it) }?.let { Nodos.limites(it) }
 		if (zona == null && desde.isEmpty) return null
 		val dentro = if (zona == null) lista else lista.filter { n -> Nodos.limites(n).let { o -> zona.contains(o.centerX(), o.centerY()) } }
-		return dentro.firstOrNull { Nodos.limites(it).top > desde.top }
+		val f = filtro
+		return dentro.firstOrNull { Nodos.limites(it).top > desde.top && (f == null || f(it)) }
 	}
 
 	/** Lo que decide la lectura continua, solo en la variante de pruebas (nunca el texto). */

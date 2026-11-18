@@ -168,8 +168,11 @@ class Describir(private val etiqueta: (paquete: String, id: String) -> String? =
 	}
 
 	private fun posicion(n: AccessibilityNodeInfo): Posicion? {
-		val item = n.collectionItemInfo ?: return null
-		val coleccion = coleccionDe(n)?.collectionInfo
+		// Un enlace o un texto dentro de una celda de una tabla web: la fila y la columna son las de su celda (TalkBack
+		// CollectionState). Fuera de una web no: un botón dentro de una fila de una lista no repite su posición
+		val celda = if (n.collectionItemInfo == null && Nodos.rolChrome(n) != null) Nodos.celdaWebDe(n) else null
+		val item = n.collectionItemInfo ?: celda?.collectionItemInfo ?: return null
+		val coleccion = coleccionDe(celda ?: n)?.collectionInfo
 		val filas = coleccion?.rowCount ?: 0
 		val columnas = coleccion?.columnCount ?: 0
 		// Listas de una columna: el índice es la fila; en una lista horizontal, la columna

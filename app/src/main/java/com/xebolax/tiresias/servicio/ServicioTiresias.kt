@@ -14,6 +14,7 @@ import com.xebolax.tiresias.BuildConfig
 import com.xebolax.tiresias.R
 import com.xebolax.tiresias.base.Ajustes
 import com.xebolax.tiresias.base.Almacen
+import com.xebolax.tiresias.base.Diagnostico
 import com.xebolax.tiresias.base.Idioma
 import com.xebolax.tiresias.base.Registro
 import com.xebolax.tiresias.braille.Braille
@@ -133,10 +134,10 @@ class ServicioTiresias : AccessibilityService() {
 					lector?.let { l -> if (l.bloqueado()) l.alEncenderBloqueado() }
 					// Lo que el usuario quiere oír al encender la pantalla (Ajustes, Notificaciones y pantalla)
 					when (lector?.ajustes?.alEncender) {
-						"hora" -> lector?.decir(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date()), Modo.ENCOLAR)
+						"hora" -> lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
 						"estado" -> ejecutor?.ejecutar(Accion.ESTADO_SISTEMA)
 						"avisos" -> {
-							lector?.decir(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date()), Modo.ENCOLAR)
+							lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
 							ejecutor?.ejecutar(Accion.RESUMEN_AVISOS)
 						}
 					}
@@ -145,10 +146,10 @@ class ServicioTiresias : AccessibilityService() {
 				Intent.ACTION_USER_PRESENT -> lector?.manejador?.post {
 					when (lector?.ajustes?.alDesbloquear) {
 						"desbloqueado" -> lector?.decir(R.string.desbloqueado, Modo.ENCOLAR)
-						"hora" -> lector?.decir(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date()), Modo.ENCOLAR)
+						"hora" -> lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
 						"estado" -> ejecutor?.ejecutar(Accion.ESTADO_SISTEMA)
 						"avisos" -> {
-							lector?.decir(java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date()), Modo.ENCOLAR)
+							lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
 							ejecutor?.ejecutar(Accion.RESUMEN_AVISOS)
 						}
 					}
@@ -223,6 +224,7 @@ class ServicioTiresias : AccessibilityService() {
 		Guarda.iniciar(this)
 		com.xebolax.tiresias.voz.PistaAudio.multimedia = Ajustes(this).vozMultimedia
 		com.xebolax.tiresias.voz.PistaAudio.sinCaptura = Ajustes(this).vozSinCaptura
+		com.xebolax.tiresias.voz.PistaAudio.silencioAlEmpezar = Ajustes(this).vozSilencioInicio
 		val v = Voz(this)
 		voz = v
 		val s = Sonidos(this)
@@ -487,6 +489,8 @@ class ServicioTiresias : AccessibilityService() {
 				val paquete = e.packageName?.toString()
 				// El teclado en pantalla no es la app de delante: con él, los gestos y los ajustes siguen siendo los de la app (SandFly)
 				if (paquete != null && paquete != paqueteActual && paquete != packageName && !esDelTeclado(e.windowId)) {
+					// La persiana o el panel de volumen encima de una app: al cerrarse hay que volver a lo de esa app
+					appBajoSistema = if (paquete == SISTEMA) (if (paqueteActual != SISTEMA) paqueteActual else appBajoSistema) else null
 					paqueteActual = paquete
 					l.gestos.alCambiarApp(paquete)
 					l.perfiles.alCambiarApp(paquete)
@@ -499,9 +503,23 @@ class ServicioTiresias : AccessibilityService() {
 				}
 			}
 			AccessibilityEvent.TYPE_TOUCH_INTERACTION_END -> l.gestos.alTerminarToque()
+			// Al cerrar la persiana o el panel de volumen no llega ningún cambio de la app de debajo: se mira qué ventana
+			// está activa, y si vuelve a ser la app, se le devuelven sus gestos, su perfil y su toque directo (SandFly 723dbb2d0)
+			AccessibilityEvent.TYPE_WINDOWS_CHANGED -> if (paqueteActual == SISTEMA) appBajoSistema?.let { debajo ->
+				val activa = runCatching { windows.firstOrNull { it.isActive }?.root?.packageName?.toString() }.getOrNull()
+				if (activa == debajo) {
+					paqueteActual = debajo
+					appBajoSistema = null
+					l.gestos.alCambiarApp(debajo)
+					l.perfiles.alCambiarApp(debajo)
+				}
+			}
 		}
 		l.alEvento(e)
 	}
+
+	/** La app que había debajo cuando la persiana o el panel de volumen (SystemUI) pasaron a ser la app de delante. */
+	private var appBajoSistema: String? = null
 
 	/** Si la ventana [id] es la del teclado en pantalla (la lista de ventanas la da Android, sin preguntar a ninguna app). */
 	private fun esDelTeclado(id: Int): Boolean =
@@ -580,7 +598,7 @@ class ServicioTiresias : AccessibilityService() {
 	override fun onKeyEvent(e: KeyEvent?): Boolean {
 		e ?: return false
 		return try {
-			teclado?.alPulsar(e) ?: false
+			(teclado?.alPulsar(e) ?: false).also { Diagnostico.apuntarTecla(e, it) }
 		} catch (ex: Exception) {
 			Registro.e(ETIQUETA, "Fallo con una tecla", ex)
 			false
@@ -916,6 +934,7 @@ class ServicioTiresias : AccessibilityService() {
 	}
 
 	companion object {
+		private const val SISTEMA = "com.android.systemui"
 		private const val ETIQUETA = "ServicioTiresias"
 		/** Lo que se espera tras arrancar para avisar de que lo cerró la limpieza de Recientes (después del «Tiresias activado»). */
 		private const val AVISO_LIMPIAR_MS = 6_000L

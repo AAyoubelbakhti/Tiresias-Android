@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
-import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -284,9 +283,12 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 
 	// --- Lo que llega de la superficie ----------------------------------------------------------
 
+	/** La vibración de los puntos, con la intensidad y el tipo de Tiresias (no la respuesta táctil del sistema). */
+	private val vibracion by lazy { com.xebolax.tiresias.voz.Vibracion(this) }
+
 	override fun alApoyar() {
 		val a = Ajustes(this)
-		if (a.brailleVibrarPuntos) activa?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+		if (a.brailleVibrarPuntos) vibracion.puntoBraille()
 		if (a.brailleSonarPuntos) sonar(Sonido.TECLA)
 	}
 

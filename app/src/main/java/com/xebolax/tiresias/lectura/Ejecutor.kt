@@ -168,6 +168,8 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.PISTA_SIGUIENTE -> teclaMultimedia(KeyEvent.KEYCODE_MEDIA_NEXT)
 		Accion.PISTA_ANTERIOR -> teclaMultimedia(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
 		Accion.POSICION_CURSOR -> posicionCursor()
+		Accion.CONTAR_TEXTO -> contarTexto()
+		Accion.LEER_DESDE_AQUI_CONTROL -> lector.continua.desdeAquiSolo(nav.filtroDe(lector.control)).also { if (!it) lector.decir(R.string.lectura_nada_del_control, nav.nombreControl(lector.control)) }
 		Accion.PONER_VALOR -> ponerValor(objetivo())
 		Accion.FORMATO_TEXTO -> formatoTexto(objetivo())
 		Accion.PONER_MARCA -> ponerMarca()
@@ -204,6 +206,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.DESCRIBIR_IA -> lector.vision.describirElemento()
 		Accion.PANTALLA_IA -> lector.vision.describirPantalla()
 		Accion.PREGUNTAR_IA -> lector.vision.preguntar()
+		Accion.PREGUNTAR_IA_VOZ -> lector.vision.puedePreguntar() && lector.escucha.dictarEn { pregunta -> lector.vision.preguntarCon(pregunta) }
 		Accion.OCR_ELEMENTO -> lector.vision.ocrElemento()
 		Accion.OCR_PANTALLA -> lector.vision.ocrPantalla()
 		Accion.ETIQUETAR -> etiquetar()
@@ -272,9 +275,28 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	/** El elemento sobre el que se actúa: el que se ha dicho o, si ya no existe, el que tiene el foco de accesibilidad. */
 	private fun objetivo(): AccessibilityNodeInfo? {
 		lector.foco?.takeIf { Nodos.vivo(it) }?.let { return it }
+		// Sin foco porque la app acaba de rehacer lo enfocado (Facebook, una página web): el mismo elemento dibujado de
+		// nuevo, para que el doble toque no se quede sin nada que pulsar (SandFly 5ac34916c)
+		if (lector.foco == null) lector.raiz()?.let { r ->
+			lector.focoPerdido(r.windowId)?.first?.let { viejo -> lector.recuperarFoco(viejo)?.let { return it } }
+		}
 		// La app lo rehízo: el más parecido, para no perder el sitio
 		lector.foco?.let { viejo -> lector.recuperarFoco(viejo)?.let { return it } }
 		return lector.raiz()?.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) ?: lector.foco
+	}
+
+	/** El antepasado más cercano de [n] que admite la acción [accion] (hasta ocho niveles), o null. */
+	private fun antepasadoCon(n: AccessibilityNodeInfo, accion: Int): AccessibilityNodeInfo? {
+		var p = runCatching { n.parent }.getOrNull()
+		var nivel = 0
+		while (p != null && nivel < 8) {
+			// (no un marco que ocupa casi toda la pantalla: su clic sería en su centro, no donde está el texto; ahí, el toque de verdad)
+			if (Nodos.limites(p).height() > android.content.res.Resources.getSystem().displayMetrics.heightPixels * 6 / 10) return null
+			if (p.actionList.any { it.id == accion } && p.isVisibleToUser) return p
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return null
 	}
 
 	private fun activar(): Boolean {
@@ -283,6 +305,8 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		// y si se ha elegido una: si no, activa como siempre (con el selector en Edición, el doble toque no
 		// abría nada: ni WhatsApp ni las opciones del menú de Tiresias)
 		if (lector.control == ControlLectura.EDICION && f.isEditable && edicionElegida >= 0) return hacerEdicionElegida()
+		// Con el control Portapapeles, el doble toque pega lo copiado que se ha elegido con arriba y abajo
+		if (lector.control == ControlLectura.PORTAPAPELES && portapapelesElegido >= 0) return pegarElegido()
 		// La acción elegida con arriba y abajo para este elemento (con el control Acciones o con el predeterminado)
 		accionElegidaDe(f)?.let { a ->
 			lector.sonidos.tocar(Sonido.ACTIVAR)
@@ -298,6 +322,11 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		if (f.packageName?.toString()?.let { it in lector.ajustes.appsClicDirecto } == true) return tocarEn(f, false)
 		val antes = SystemClock.uptimeMillis()
 		val ok = runCatching { f.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)
+		// Un texto que no se pulsa, dentro de algo que sí (el texto de dentro por separado, el párrafo de una respuesta de
+		// una web que se pulsa entera): el clic al antepasado que lo admite (SandFly FocusActor.itemOfTextInside)
+		if (!ok && !Nodos.accionable(f)) antepasadoCon(f, AccessibilityNodeInfo.ACTION_CLICK)?.let { a ->
+			if (runCatching { a.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) return true
+		}
 		// Si la app no atiende el clic de accesibilidad (Telegram en HyperOS: Backtalk 266), un toque de verdad
 		if (!ok) return tocarEn(f, false)
 		if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d(ETIQUETA, "Clic en ${SystemClock.uptimeMillis() - antes} ms")
@@ -316,7 +345,8 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 			return true
 		}
 		lector.sonidos.tocar(Sonido.MANTENER)
-		val ok = runCatching { f.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) }.getOrDefault(false)
+		val ok = runCatching { f.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) }.getOrDefault(false) ||
+			(!Nodos.accionable(f) && antepasadoCon(f, AccessibilityNodeInfo.ACTION_LONG_CLICK)?.let { a -> runCatching { a.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) }.getOrDefault(false) } == true)
 		return ok || tocarEn(f, true)
 	}
 
@@ -344,7 +374,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		val raiz = lector.raiz() ?: return false
 		// La lista más cercana que pueda ir hacia ahí (si la lista mide lo que su contenido, el contenedor que la envuelve)
 		val lista = f?.let { n -> acciones.toList().firstNotNullOfOrNull { a -> Nodos.desplazableHacia(n, a) } ?: Nodos.desplazable(n) }
-			?: acciones.toList().firstNotNullOfOrNull { a -> Nodos.primerDesplazable(raiz, a) } ?: Nodos.primerDesplazable(raiz) ?: run {
+			?: acciones.toList().firstNotNullOfOrNull { a -> Nodos.primerDesplazable(raiz, a, alSeguir = true) } ?: Nodos.primerDesplazable(raiz, alSeguir = true) ?: run {
 			lector.sonidos.tocar(Sonido.BORDE)
 			return false
 		}
@@ -402,7 +432,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		val raiz = lector.raiz() ?: return false
 		val atras = AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
 		val lista = lector.foco?.let { Nodos.desplazableHacia(it, atras) ?: Nodos.desplazable(it) }
-			?: Nodos.primerDesplazable(raiz, atras) ?: Nodos.primerDesplazable(raiz) ?: run {
+			?: Nodos.primerDesplazable(raiz, atras, alSeguir = true) ?: Nodos.primerDesplazable(raiz, alSeguir = true) ?: run {
 			lector.sonidos.tocar(Sonido.BORDE)
 			return false
 		}
@@ -442,7 +472,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		val accion = if (final) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
 		// La lista más cercana que pueda ir hacia ahí (si la lista mide lo que su contenido, el contenedor que la envuelve)
 		val lista = lector.foco?.let { Nodos.desplazableHacia(it, accion) ?: Nodos.desplazable(it) }
-			?: Nodos.primerDesplazable(raiz, accion) ?: Nodos.primerDesplazable(raiz) ?: run {
+			?: Nodos.primerDesplazable(raiz, accion, alSeguir = true) ?: Nodos.primerDesplazable(raiz, alSeguir = true) ?: run {
 			lector.sonidos.tocar(Sonido.BORDE)
 			return false
 		}
@@ -494,29 +524,51 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	 */
 	private fun ajustarDeslizador(subir: Boolean, siempre: Boolean = false): Boolean? {
 		if (!siempre && !lector.ajustes.deslizadorArribaAbajo) return null
-		val f = objetivo() ?: return null
-		val rango = f.rangeInfo ?: return null
+		val foco = objetivo() ?: return null
+		// El deslizador enfocado, el único de la fila enfocada o el selector de rueda en el que está el foco
+		// (solo si al enfocarlo se vio que hay algo que ajustar: así arriba y abajo no preguntan a la app en cada fila)
+		if (!lector.focoAjustable && foco.rangeInfo == null) return null
+		val f = Nodos.ajustableDe(foco) ?: return null
 		val acciones = f.actionList.map { it.id }
 		val adelante = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
 		val atras = AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
 		val fijar = android.R.id.accessibilityActionSetProgress
 		if (adelante !in acciones && atras !in acciones && fijar !in acciones) return null
 		lector.cancelarPista()
+		lector.ajustadoPorUsuario()
+		val rango = f.rangeInfo
 		val hecho = when {
 			subir && adelante in acciones -> f.performAction(adelante)
 			!subir && atras in acciones -> f.performAction(atras)
-			fijar in acciones -> {
-				// Un paso del 5 % (o de 1 en los de números enteros pequeños)
-				val total = rango.max - rango.min
-				val paso = if (rango.type == AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT && total <= 20) 1f else total / 20f
-				val nuevo = (rango.current + if (subir) paso else -paso).coerceIn(rango.min, rango.max)
-				f.performAction(fijar, android.os.Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, nuevo) })
-			}
+			fijar in acciones && rango != null -> fijarPaso(f, rango, subir)
 			else -> false
 		}
 		// En el tope: sonido de borde (el valor no cambia)
 		if (!hecho) lector.sonidos.tocar(Sonido.BORDE)
+		// Lo ajustado no es lo enfocado (un deslizador dentro de una fila, un selector de rueda): se dice su valor nuevo
+		else if (f != foco) lector.manejador.postDelayed({ lector.decirValorDe(f) }, 150)
 		return true
+	}
+
+	/**
+	 * Un paso del 5 % (o de 1 en los de números enteros pequeños) con «poner el valor». Si la app lo redondea al
+	 * mismo valor (un deslizador con pocos pasos), se prueba con un paso mayor, hasta cuatro veces.
+	 */
+	private fun fijarPaso(f: AccessibilityNodeInfo, rango: AccessibilityNodeInfo.RangeInfo, subir: Boolean): Boolean {
+		val total = rango.max - rango.min
+		var paso = if (rango.type == AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT && total <= 20) 1f else total / 20f
+		val antes = rango.current
+		repeat(4) {
+			val nuevo = (antes + if (subir) paso else -paso).coerceIn(rango.min, rango.max)
+			if (nuevo == antes) return false
+			if (!f.performAction(android.R.id.accessibilityActionSetProgress, android.os.Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, nuevo) })) return false
+			// (la app tarda un poco en apuntar el valor nuevo)
+			android.os.SystemClock.sleep(40)
+			runCatching { f.refresh() }
+			if (f.rangeInfo?.current != antes) return true
+			paso *= 2
+		}
+		return false
 	}
 
 	private fun noDisponible(): Boolean {
@@ -536,6 +588,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		lector.control = lista[(i + if (adelante) 1 else lista.size - 1) % lista.size]
 		accionElegida = -1
 		edicionElegida = -1
+		portapapelesElegido = -1
 		lector.sonidos.tocar(Sonido.SELECTOR)
 		lector.decir(nav.nombreControl(lector.control))
 		return true
@@ -553,6 +606,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		ControlLectura.VENTANAS -> nav.ventana(abajo)
 		ControlLectura.ACCIONES -> elegirAccion(abajo)
 		ControlLectura.EDICION -> elegirEdicion(abajo)
+		ControlLectura.PORTAPAPELES -> elegirCopiado(abajo)
 		ControlLectura.VELOCIDAD -> cambiarVelocidad(if (abajo) -10 else 10)
 		ControlLectura.TONO -> cambiarTono(if (abajo) -10 else 10)
 		ControlLectura.VOLUMEN -> volumen(!abajo)
@@ -781,8 +835,9 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		R.string.acc_borrar_texto to Accion.BORRAR_TEXTO,
 		R.string.acc_modo_seleccion to Accion.MODO_SELECCION,
 		// (el manual las daba por puestas y no estaban)
-		R.string.accion_deshacer to Accion.DESHACER,
+			R.string.accion_deshacer to Accion.DESHACER,
 		R.string.accion_rehacer to Accion.REHACER,
+		R.string.accion_contar_texto to Accion.CONTAR_TEXTO,
 	)
 
 	/** La opción de edición elegida con arriba y abajo (con el control Edición). */
@@ -797,6 +852,52 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	}
 
 	private fun hacerEdicionElegida(): Boolean = edicionOpciones.getOrNull(edicionElegida)?.let { ejecutar(it.second) } ?: false
+
+	/** Lo copiado elegido con arriba y abajo (con el control Portapapeles); -1: ninguno. */
+	private var portapapelesElegido = -1
+
+	/** Recorre lo copiado, del más nuevo (abajo) al más viejo, y lo dice con su posición. */
+	private fun elegirCopiado(abajo: Boolean): Boolean {
+		val lista = lector.edicion.copiado()
+		if (lista.isEmpty()) {
+			portapapelesElegido = -1
+			lector.decir(R.string.portapapeles_vacio_historial)
+			return false
+		}
+		val n = lista.size
+		portapapelesElegido = if (portapapelesElegido !in lista.indices) (if (abajo) 0 else n - 1) else (portapapelesElegido + if (abajo) 1 else n - 1) % n
+		lector.sonidos.tocar(Sonido.SELECTOR)
+		lector.decir(t.getString(R.string.portapapeles_elemento, lista[portapapelesElegido], portapapelesElegido + 1, n))
+		return true
+	}
+
+	/** Pega en el campo lo copiado que se ha elegido (y lo deja en el portapapeles). */
+	private fun pegarElegido(): Boolean {
+		val texto = lector.edicion.copiado().getOrNull(portapapelesElegido) ?: return false
+		lector.edicion.portapapeles(texto)
+		if (!lector.edicion.pegar()) lector.decir(R.string.copiado)
+		return true
+	}
+
+	/** Cuántos caracteres y palabras tiene el campo enfocado (en una contraseña, solo los caracteres). */
+	private fun contarTexto(): Boolean {
+		val campo = lector.raiz()?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable } ?: objetivo()
+		if (campo == null) {
+			lector.decir(R.string.cursor_sin_campo)
+			return false
+		}
+		runCatching { campo.refresh() }
+		val texto = if ((Build.VERSION.SDK_INT >= 26 && campo.isShowingHintText)) "" else (campo.text ?: if (campo.isEditable) "" else lector.elemento(campo).nombre).toString()
+		val idioma = com.xebolax.tiresias.base.Idioma.efectivo(t)
+		val caracteres = t.resources.getQuantityString(R.plurals.contar_caracteres, com.xebolax.tiresias.nucleo.ContarTexto.caracteres(texto, idioma), com.xebolax.tiresias.nucleo.ContarTexto.caracteres(texto, idioma))
+		if (campo.isPassword) {
+			lector.decir(caracteres)
+			return true
+		}
+		val p = com.xebolax.tiresias.nucleo.ContarTexto.palabras(texto, idioma)
+		lector.decir(t.getString(R.string.contar_y, caracteres, t.resources.getQuantityString(R.plurals.contar_palabras, p, p)))
+		return true
+	}
 
 	// --- Menús ----------------------------------------------------------------------------------
 
@@ -993,7 +1094,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		// La lista más cercana que pueda desplazarse (si la lista mide lo que su contenido, el contenedor que la envuelve)
 		val lista = lector.foco?.let { f ->
 			Nodos.desplazableHacia(f, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) ?: Nodos.desplazableHacia(f, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) ?: Nodos.desplazable(f)
-		} ?: Nodos.primerDesplazable(raiz, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) ?: Nodos.primerDesplazable(raiz) ?: run {
+		} ?: Nodos.primerDesplazable(raiz, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, alSeguir = true) ?: Nodos.primerDesplazable(raiz, alSeguir = true) ?: run {
 			lector.decir(R.string.lista_sin_lista)
 			return false
 		}
@@ -1072,7 +1173,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		// El inicio hablado del escritorio saluda él mismo; sin escritorio, el Inicio de siempre
 		if (lector.ajustes.modoSenior && com.xebolax.tiresias.servicio.PuenteEscritorio.abrirSenior(servicio)) return true
 		servicio.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-		val hora = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date())
+		val hora = lector.ajustes.horaAhora()
 		lector.manejador.postDelayed({ lector.decir(t.getString(R.string.senior_inicio, hora)) }, 400)
 		return true
 	}
@@ -1997,7 +2098,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 
 	private fun textoEstado(): String {
 		val partes = lector.ajustes.partesEstado.mapNotNull { parte -> runCatching { parteEstado(parte) }.getOrNull() }
-		return partes.filter { it.isNotBlank() }.joinToString(". ").ifBlank { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date()) }
+		return partes.filter { it.isNotBlank() }.joinToString(". ").ifBlank { lector.ajustes.horaAhora() }
 	}
 
 	/** El botón de estado del escritorio: todo en una frase, para que lo segundo no corte lo primero. */
@@ -2007,7 +2108,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	}
 
 	private fun parteEstado(p: com.xebolax.tiresias.nucleo.ParteEstado): String? = when (p) {
-		com.xebolax.tiresias.nucleo.ParteEstado.HORA -> DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
+		com.xebolax.tiresias.nucleo.ParteEstado.HORA -> lector.ajustes.horaAhora()
 		com.xebolax.tiresias.nucleo.ParteEstado.FECHA -> DateFormat.getDateInstance(DateFormat.FULL).format(Date())
 		com.xebolax.tiresias.nucleo.ParteEstado.BATERIA -> {
 			val bateria = servicio.getSystemService(BatteryManager::class.java)

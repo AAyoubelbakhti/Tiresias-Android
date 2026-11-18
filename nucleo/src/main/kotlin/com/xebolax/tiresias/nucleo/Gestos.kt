@@ -28,6 +28,9 @@ enum class Gesto(val dedos: Int) {
 	HUELLA_ARRIBA(0), HUELLA_ABAJO(0), HUELLA_IZQUIERDA(0), HUELLA_DERECHA(0),
 	// Teclas de volumen (las reconoce Tiresias)
 	VOLUMEN_ARRIBA_MANTENIDO(0), VOLUMEN_ABAJO_MANTENIDO(0), VOLUMEN_AMBAS(0), VOLUMEN_ARRIBA_TRIPLE(0), VOLUMEN_ABAJO_TRIPLE(0),
+	// Una pulsación corta de una tecla de volumen (SandFly 86137ed80): con una acción, esa tecla ya no cambia el volumen
+	// al pulsarla una vez (sí dos veces seguidas, o mantenida si no tiene otra acción)
+	VOLUMEN_ARRIBA_UNA(0), VOLUMEN_ABAJO_UNA(0),
 }
 
 /**
@@ -128,6 +131,10 @@ enum class Accion {
 	// 1.0.11: el editor de texto (el campo en una pantalla entera, con el modo edición), actualizar la lista
 	// (tirar de ella hacia abajo, SandFly) y revisar la pantalla para repararla sola (a partir de su estructura)
 	EDITOR_TEXTO, ACTUALIZAR_LISTA, REVISAR_PANTALLA,
+	// 1.0.17 (SandFly): contar los caracteres y las palabras del campo; leer desde aquí solo lo del control de lectura elegido
+	CONTAR_TEXTO, LEER_DESDE_AQUI_CONTROL,
+	// Preguntar a la IA sobre la pantalla diciendo la pregunta en voz alta (SandFly 4a59e31d7)
+	PREGUNTAR_IA_VOZ,
 }
 
 /** Lo que puede decir el gesto de estado («Hora, fecha y batería»), en el orden que se elija. */
@@ -336,10 +343,12 @@ enum class ControlLectura {
 	VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA,
 	// La música: arriba, la canción anterior; abajo, la siguiente (Backtalk 303)
 	MULTIMEDIA,
+	// Lo copiado: arriba y abajo lo recorren, del más nuevo al más viejo; el doble toque lo pega (SandFly acc13bb43)
+	PORTAPAPELES,
 	;
 
 	/** Si es un control de movimiento por el texto o por la pantalla (los demás cambian un ajuste). */
-	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA)
+	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA, PORTAPAPELES)
 
 	/** Los que solo tienen sentido dentro de una página web (Backtalk 222). */
 	val soloWeb: Boolean get() = this == ENLACES || this == REGIONES
