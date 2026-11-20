@@ -37,6 +37,9 @@ class AvisoVolumen(private val c: Context, private val ajustes: Ajustes, private
 			val valor = intent.getIntExtra(EXTRA_VALOR, -1)
 			val antes = intent.getIntExtra(EXTRA_ANTES, -1)
 			if (flujo < 0 || valor < 0 || valor == antes) return
+			// Al empezar a sonar una llamada, Android mueve el volumen de los tonos del teclado de marcar (un alias de otro):
+			// eso no lo ha hecho el usuario y se decía «volumen otro» (SandFly c7ab0985b)
+			if (flujo == STREAM_DTMF && intent.getIntExtra(EXTRA_ALIAS, STREAM_DTMF) != STREAM_DTMF) return
 			// Con la pantalla encendida, cualquier cambio (también los de Tiresias) deja sin valor lo apuntado al apagarla
 			if (!apagada()) baseApagada = -1
 			if (SystemClock.uptimeMillis() < propioHasta) return
@@ -131,6 +134,9 @@ class AvisoVolumen(private val c: Context, private val ajustes: Ajustes, private
 		private const val EXTRA_FLUJO = "android.media.EXTRA_VOLUME_STREAM_TYPE"
 		private const val EXTRA_VALOR = "android.media.EXTRA_VOLUME_STREAM_VALUE"
 		private const val EXTRA_ANTES = "android.media.EXTRA_PREV_VOLUME_STREAM_VALUE"
+		private const val EXTRA_ALIAS = "android.media.EXTRA_VOLUME_STREAM_TYPE_ALIAS"
+		/** AudioManager.STREAM_DTMF (los tonos del teclado de marcar). */
+		private const val STREAM_DTMF = 8
 		/** Lo que se espera tras la última pulsación para decir el volumen (TalkBack espera 2 s: demasiado). */
 		private const val ESPERA_MS = 350L
 		/** Lo que se espera tras el último cambio con la pantalla apagada para comprobar que el volumen de la voz sigue en su sitio. */

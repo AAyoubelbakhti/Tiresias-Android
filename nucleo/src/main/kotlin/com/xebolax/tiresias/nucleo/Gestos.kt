@@ -135,6 +135,8 @@ enum class Accion {
 	CONTAR_TEXTO, LEER_DESDE_AQUI_CONTROL,
 	// Preguntar a la IA sobre la pantalla diciendo la pregunta en voz alta (SandFly 4a59e31d7)
 	PREGUNTAR_IA_VOZ,
+	// 1.0.18 (SandFly 4fc6a8447 y 15e6d3f3a): repetir lo último más despacio; decir todo lo escrito en el campo
+	REPETIR_DESPACIO, LEER_CAMPO,
 }
 
 /** Lo que puede decir el gesto de estado («Hora, fecha y batería»), en el orden que se elija. */
@@ -345,10 +347,14 @@ enum class ControlLectura {
 	MULTIMEDIA,
 	// Lo copiado: arriba y abajo lo recorren, del más nuevo al más viejo; el doble toque lo pega (SandFly acc13bb43)
 	PORTAPAPELES,
+	// Lo que suena: arriba, retroceder; abajo, avanzar (Ideafix)
+	AVANCE,
+	// Arriba, reconocer el texto del elemento (OCR); abajo, traducirlo con la IA (Ideafix)
+	TEXTO_IA,
 	;
 
 	/** Si es un control de movimiento por el texto o por la pantalla (los demás cambian un ajuste). */
-	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA, PORTAPAPELES)
+	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA, PORTAPAPELES, AVANCE, TEXTO_IA)
 
 	/** Los que solo tienen sentido dentro de una página web (Backtalk 222). */
 	val soloWeb: Boolean get() = this == ENLACES || this == REGIONES

@@ -359,6 +359,7 @@
 	<string-array name="braille_eco_nombres">
 		<item>Each letter</item>
 		<item>Each word when finished</item>
+		<item>Each letter and each word</item>
 		<item>Nothing</item>
 	</string-array>
 	<string name="aj_braille_vibrar_puntos">Vibrate on each dot</string>

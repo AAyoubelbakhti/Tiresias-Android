@@ -27,8 +27,11 @@
 	<string name="ia_gemini">Gemini</string>
 	<string name="ia_compatible">servidor compatible</string>
 	<string name="ia_instrucciones">Eres el asistente de un lector de pantalla para personas ciegas. Responde siempre en %1$s, con frases claras y sin formato (sin asteriscos, almohadillas ni listas con símbolos), porque la respuesta se va a escuchar. Al describir una imagen o una pantalla: primero lo más importante, luego los detalles útiles, el texto que se ve tal cual y dónde están los botones. No inventes lo que no se ve.</string>
-	<string name="ia_pedir_elemento">Describe este elemento de la pantalla. Si es un botón o un icono, di qué hace con dos o tres palabras y luego descríbelo.</string>
-	<string name="ia_pedir_pantalla">Describe esta pantalla: qué app parece, qué hay en ella y qué se puede hacer.</string>
+	<string name="ia_pedir_elemento">Describe este elemento de la pantalla. Si es un botón o un icono, di qué hace con dos o tres palabras y luego descríbelo. Si tiene texto, dilo entero y tal cual, sin resumirlo. Céntrate en lo principal, no en lo que hay alrededor.</string>
+	<string name="ia_pedir_pantalla">Describe esta pantalla: qué app parece, qué hay en ella y qué se puede hacer. Si hay texto importante (un mensaje, una invitación, un cartel), dilo tal cual, sin resumirlo.</string>
+	<string name="ia_con_instrucciones">%1$s\n\nAdemás, sigue estas instrucciones de la persona: %2$s</string>
+	<string name="aj_ia_instrucciones">Instrucciones propias al describir</string>
+	<string name="aj_ia_instrucciones_res">Lo que se añade a lo que se pide a la IA al describir un elemento o la pantalla (por ejemplo: «lee siempre todo el texto»). Vacío, nada.</string>
 	<string name="ia_titulo_elemento">Descripción del elemento</string>
 	<string name="ia_titulo_pantalla">Descripción de la pantalla</string>
 	<string name="ia_titulo_pregunta">Pregunta sobre la pantalla</string>

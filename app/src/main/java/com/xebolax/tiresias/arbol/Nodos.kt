@@ -272,7 +272,19 @@ object Nodos {
 	 */
 	fun esLista(n: AccessibilityNodeInfo): Boolean =
 		(n.collectionInfo != null || (n.isScrollable && n.rangeInfo == null)) &&
-			!n.isClickable
+			(!n.isClickable || esClaseDeLista(n))
+
+	/**
+	 * Una lista de verdad por su clase (ListView, GridView, RecyclerView...), aunque la app la haga pulsable: en
+	 * «Reenviar a» de WhatsApp (noviembre de 2026) la lista se pulsa y se mantiene, y se leía entera como una sola
+	 * parada que no se desplazaba (Dharius, Cronopio). Un desplegable (Spinner) no lo es: es un control.
+	 */
+	private fun esClaseDeLista(n: AccessibilityNodeInfo): Boolean {
+		val clase = n.className?.toString() ?: return false
+		if (clase.endsWith("Spinner")) return false
+		return clase.endsWith("ListView") || clase.endsWith("GridView") || clase.endsWith("RecyclerView") ||
+			clase == "android.widget.AbsListView"
+	}
 
 	/** El primer antepasado de [n] (o él mismo) que recibe el foco: el que se lee al tocar. */
 	fun enfocable(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -280,6 +292,14 @@ object Nodos {
 		var nivel = 0
 		var candidato: AccessibilityNodeInfo? = null
 		while (actual != null && nivel < 15) {
+			// Una lista con filas no es una parada aunque la app la haga mantenible (la de «Reenviar a» de WhatsApp):
+			// al tocar una fila se enfoca la fila, no la lista entera, que se leía de una vez (Dharius, Cronopio)
+			if (esLista(actual) && actual.childCount > 0) {
+				if (candidato != null) return candidato
+				actual = runCatching { actual!!.parent }.getOrNull()
+				nivel++
+				continue
+			}
 			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual)) && !esVeloDePagina(actual) && !contenedorWebLargo(actual)) {
 				if (accionable(actual) && actual.isVisibleToUser) return actual
 				if (candidato == null && recibeFoco(actual)) candidato = actual
@@ -410,10 +430,20 @@ object Nodos {
 		// Una fila pegada al borde de su lista puede estar cortada (el título por encima del borde al volver
 		// hacia atrás): sus textos que no se ven se leen igual, que son parte de ella
 		// (y los de algo que está entero fuera de la vista: la celda de una tabla web más ancha que la pantalla)
-		textoHijos(n, sb, 0, maximo, aMedias(n) || !n.isVisibleToUser, dichos, sinControles)
+		val citas = ArrayList<AccessibilityNodeInfo>()
+		val ocultos = aMedias(n) || !n.isVisibleToUser
+		textoHijos(n, sb, 0, maximo, ocultos, dichos, sinControles, citas)
 		// Una fila medio fuera de la pantalla (al final de una lista que aún se está desplazando) tiene
 		// sus textos todavía sin ver: antes que «sin nombre», se leen aunque no se vean
-		if (sb.isBlank() && n.isVisibleToUser) textoHijos(n, sb, 0, maximo, true, dichos, sinControles)
+		if (sb.isBlank() && n.isVisibleToUser && citas.isEmpty()) textoHijos(n, sb, 0, maximo, true, dichos, sinControles, citas)
+		// El mensaje al que se responde, detrás de la respuesta: primero lo que se ha dicho y luego a qué (Cronopio)
+		for (c in citas) {
+			val cita = StringBuilder()
+			textoHijos(c, cita, 1, maximo, ocultos, dichos, sinControles, null)
+			if (cita.isBlank()) continue
+			if (sb.isNotEmpty()) sb.append(". ")
+			sb.append(cita)
+		}
 		// (sin comas seguidas, que dejan los textos que acaban en coma)
 		return sb.toString().replace(Regex("\\s+"), " ").replace(Regex(",(\\s*,)+"), ",").trim().trimEnd(',')
 	}
@@ -431,11 +461,19 @@ object Nodos {
 		return r.top <= l.top || r.bottom >= l.bottom
 	}
 
-	private fun textoHijos(n: AccessibilityNodeInfo, sb: StringBuilder, nivel: Int, maximo: Int, ocultos: Boolean, dichos: MutableSet<String>, sinControles: Boolean) {
+	private fun textoHijos(
+		n: AccessibilityNodeInfo, sb: StringBuilder, nivel: Int, maximo: Int, ocultos: Boolean, dichos: MutableSet<String>, sinControles: Boolean,
+		citas: MutableList<AccessibilityNodeInfo>?,
+	) {
 		if (nivel > 8 || sb.length > maximo) return
 		for (i in 0 until n.childCount) {
 			val hijo = runCatching { n.getChild(i) }.getOrNull() ?: continue
 			if (!ocultos && !hijo.isVisibleToUser) continue
+			// La cita de un mensaje que responde a otro (WhatsApp) va delante en la fila: se guarda para el final
+			if (citas != null && esCita(hijo)) {
+				citas.add(hijo)
+				continue
+			}
 			// Un hijo que es un control con nombre propio (un botón «Borrar» en una fila) se lee aparte
 			if (accionable(hijo) && (sinControles || esControlIndependiente(hijo))) continue
 			if (esParadaSuelta(hijo)) continue
@@ -452,8 +490,14 @@ object Nodos {
 				if (sb.isNotEmpty()) sb.append(", ")
 				sb.append(propio)
 				if (Build.VERSION.SDK_INT >= 30) hijo.stateDescription?.takeIf { it.isNotBlank() }?.let { sb.append(", ").append(it) }
-			} else textoHijos(hijo, sb, nivel + 1, maximo, ocultos, dichos, sinControles)
+			} else textoHijos(hijo, sb, nivel + 1, maximo, ocultos, dichos, sinControles, citas)
 		}
+	}
+
+	/** El recuadro del mensaje citado dentro de un mensaje que responde a otro (WhatsApp y WhatsApp Business). */
+	private fun esCita(n: AccessibilityNodeInfo): Boolean {
+		val id = n.viewIdResourceName ?: return false
+		return id.endsWith(":id/quoted_message_holder") && (id.startsWith("com.whatsapp"))
 	}
 
 	/**
@@ -467,7 +511,37 @@ object Nodos {
 			(clase.endsWith("ImageView") && !n.contentDescription.isNullOrBlank() && accionable(n)) || esParadaSuelta(n) ||
 			// Un deslizador dentro de una fila o una tarjeta que se pulsa (el volumen de una alarma, el precio de un filtro):
 			// es su propia parada. Si no, el foco se quedaba en la fila y arriba y abajo no lo cambiaban (Dharius, Blue-Sky)
-			(esAjustable(n) && n.isVisibleToUser)
+			(esAjustable(n) && n.isVisibleToUser) ||
+			// El «Leer más» de un mensaje largo de WhatsApp es un botón virtual dentro del texto: su propia parada, como
+			// en TalkBack (Cronopio: no se podía encontrar ni pulsar)
+			esBotonLeerMas(n)
+	}
+
+	/** «Leer más», «Ver más», «Read more»...: lo que abre el resto de un mensaje o de un texto largo. */
+	val LEER_MAS = Regex("(?i)[.…\\s]*(leer|ver|mostrar|read|see|show|lire|mehr|leggi) ?(más|mas|more|la suite|anzeigen|altro)\\.*…?")
+
+	/** Si [n] es un botón (o una vista que se pulsa) que se llama «Leer más» o parecido. */
+	fun esBotonLeerMas(n: AccessibilityNodeInfo): Boolean {
+		if (!accionable(n)) return false
+		val nombre = (n.contentDescription ?: n.text)?.toString()?.trim() ?: return false
+		return nombre.length <= 30 && LEER_MAS.matches(nombre)
+	}
+
+	/** El botón «Leer más» que hay dentro de [n] (no [n] mismo), si se ve; o null. */
+	fun botonLeerMas(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		var vistos = 0
+		fun dentro(p: AccessibilityNodeInfo, nivel: Int): AccessibilityNodeInfo? {
+			if (nivel > 6) return null
+			for (i in 0 until p.childCount) {
+				if (++vistos > 60) return null
+				val h = runCatching { p.getChild(i) }.getOrNull() ?: continue
+				if (!h.isVisibleToUser) continue
+				if (esBotonLeerMas(h)) return h
+				dentro(h, nivel + 1)?.let { return it }
+			}
+			return null
+		}
+		return dentro(n, 0)
 	}
 
 	/** Si [n] tiene un valor que se puede subir y bajar (un deslizador, una barra que se mueve), como TalkBack. */
@@ -664,6 +738,12 @@ object Nodos {
 		runCatching { n.extras?.getCharSequence("AccessibilityNodeInfo.chromeRole")?.toString() }.getOrNull()
 
 	/** Los roles de Chrome que son controles de verdad: solo ellos leen dentro de sí lo que llevan (SandFly WebTreeOrder). */
+	/** Las acciones de desplazar que dicen hacia dónde (arriba, abajo, izquierda, derecha). */
+	private val DESPLAZAR_CON_DIRECCION = setOf(
+		android.R.id.accessibilityActionScrollUp, android.R.id.accessibilityActionScrollDown,
+		android.R.id.accessibilityActionScrollLeft, android.R.id.accessibilityActionScrollRight,
+	)
+
 	private val ROLES_CONTROL_WEB = setOf(
 		"link", "button", "toggleButton", "popUpButton", "checkBox", "radioButton", "switch", "tab", "menuItem",
 		"menuItemCheckBox", "menuItemRadio", "menuListOption", "listBoxOption", "disclosureTriangle", "comboBoxMenuButton",
@@ -792,6 +872,10 @@ object Nodos {
 		val r = rol(n)
 		if (r == Rol.PAGINADOR || r == Rol.LISTA_PESTANAS) return false
 		val ids = n.actionList.map { it.id }
+		// Una vista sin más («android.view.View») que se desplaza sin decir hacia dónde ni ser una colección: el PageView
+		// de Flutter (juegos como Lost Vault), que pasa páginas enteras (SandFly 7ed9f2e97)
+		if (n.className?.toString() == "android.view.View" && n.collectionInfo == null &&
+			ids.none { it in DESPLAZAR_CON_DIRECCION }) return false
 		// Solo de lado (sin arriba ni abajo, y con izquierda o derecha): un carrusel. Si su primer elemento ocupa casi todo
 		// el ancho, enseña una página cada vez, como un paginador
 		val vertical = android.R.id.accessibilityActionScrollUp in ids || android.R.id.accessibilityActionScrollDown in ids
@@ -861,6 +945,52 @@ object Nodos {
 			return null
 		}
 		return dentro(n, 0)
+	}
+
+	/**
+	 * El nodo ([n] o uno de dentro que no es parada propia) cuyo texto acaba como dice [final], o null: un «… Leer más»
+	 * que la app pinta al final del texto sin hacerlo enlace (los mensajes largos de WhatsApp, noviembre de 2026).
+	 */
+	fun textoQueAcabaEn(n: AccessibilityNodeInfo, final: Regex): AccessibilityNodeInfo? {
+		fun acaba(x: AccessibilityNodeInfo): Boolean = runCatching { x.text }.getOrNull()?.let { final.containsMatchIn(it) } == true
+		if (acaba(n)) return n
+		var vistos = 0
+		fun dentro(p: AccessibilityNodeInfo, nivel: Int): AccessibilityNodeInfo? {
+			if (nivel > 6) return null
+			for (i in 0 until p.childCount) {
+				if (++vistos > 40) return null
+				val h = runCatching { p.getChild(i) }.getOrNull() ?: continue
+				if (!h.isVisibleToUser || esParadaAparte(h)) continue
+				if (acaba(h)) return h
+				dentro(h, nivel + 1)?.let { return it }
+			}
+			return null
+		}
+		return dentro(n, 0)
+	}
+
+	/**
+	 * Dónde están en la pantalla las letras de [n] de [inicio] a [inicio] + [largo] (Android 8 o posterior, si la app
+	 * lo da: las vistas de texto sí), o null si no se ven o la app no lo dice.
+	 */
+	fun cajaDeLetras(n: AccessibilityNodeInfo, inicio: Int, largo: Int): android.graphics.RectF? {
+		if (Build.VERSION.SDK_INT < 26 || largo <= 0) return null
+		val clave = AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY
+		if (clave !in n.availableExtraData) return null
+		val datos = android.os.Bundle().apply {
+			putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, inicio)
+			putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, largo)
+		}
+		if (!runCatching { n.refreshWithExtraData(clave, datos) }.getOrDefault(false)) return null
+		@Suppress("DEPRECATION")
+		val cajas = runCatching { n.extras.getParcelableArray(clave) }.getOrNull() ?: return null
+		var union: android.graphics.RectF? = null
+		for (c in cajas) {
+			val r = c as? android.graphics.RectF ?: continue
+			if (r.width() <= 0f || r.height() <= 0f) continue
+			union = union?.apply { union(r) } ?: android.graphics.RectF(r)
+		}
+		return union
 	}
 
 	private fun AccessibilityNodeInfo.isScreenReaderFocusableCompat(): Boolean = Build.VERSION.SDK_INT >= 28 && isScreenReaderFocusable

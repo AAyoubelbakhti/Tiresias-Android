@@ -131,6 +131,8 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.LEER_DESDE_AQUI -> true.also { lector.continua.desdeAqui() }
 		Accion.REPETIR -> ultimoDicho()?.let { lector.voz.decir(Enunciado(it, preparar = false)); true } ?: false
 		Accion.DELETREAR -> ultimoDicho()?.let { lector.voz.decir(Enunciado(it, deletrear = true)); true } ?: false
+		Accion.REPETIR_DESPACIO -> ultimoDicho()?.let { lector.voz.decir(Enunciado(it, preparar = false, velocidad = VELOCIDAD_DESPACIO)); true } ?: false
+		Accion.LEER_CAMPO -> leerCampo()
 		Accion.DELETREO_FONETICO -> deletreoFonetico()
 		Accion.LEER_TITULO -> true.also { lector.decir(lector.tituloActivo().ifBlank { t.getString(R.string.lect_sin_titulo) }) }
 		Accion.ESTADO_SISTEMA -> estadoSistema()
@@ -615,6 +617,8 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		ControlLectura.VERBOSIDAD -> cambiarVerbosidad(abajo)
 		ControlLectura.MOTOR -> cambiarMotor(!abajo)
 		ControlLectura.MULTIMEDIA -> teclaMultimedia(if (abajo) KeyEvent.KEYCODE_MEDIA_NEXT else KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+		ControlLectura.AVANCE -> avanzarMultimedia(abajo)
+		ControlLectura.TEXTO_IA -> if (abajo) lector.vision.traducir() else lector.vision.ocrElemento()
 		ControlLectura.SALIDA -> cambiarSalida(!abajo)
 		// En las apps, los enlaces de dentro del texto uno a uno (el doble toque pulsa el dicho) y luego el elemento siguiente
 		ControlLectura.ENLACES -> enlaceDentro(abajo) ?: nav.porTipo(c, abajo)
@@ -838,6 +842,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 			R.string.accion_deshacer to Accion.DESHACER,
 		R.string.accion_rehacer to Accion.REHACER,
 		R.string.accion_contar_texto to Accion.CONTAR_TEXTO,
+		R.string.accion_leer_campo to Accion.LEER_CAMPO,
 	)
 
 	/** La opción de edición elegida con arriba y abajo (con el control Edición). */
@@ -880,6 +885,54 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	}
 
 	/** Cuántos caracteres y palabras tiene el campo enfocado (en una contraseña, solo los caracteres). */
+	/**
+	 * Un cuadro de Tiresias para escribir en [campo] cuando la app no deja abrir el teclado en él: con un lector de
+	 * pantalla, Android vuelve a abrir «Opciones de Autocompletar» cada vez que se pulsa un campo con contraseñas
+	 * guardadas y el teclado no sale nunca (Tiflolibros en el Lector Universal). Lo escrito se pone en el campo.
+	 */
+	fun escribirEnCampo(campo: AccessibilityNodeInfo) {
+		if (!Nodos.vivo(campo) || !campo.isEditable) return
+		val nombre = lector.elemento(campo).nombre.trim()
+		val titulo = if (nombre.isEmpty()) t.getString(R.string.escribir_campo_titulo) else t.getString(R.string.escribir_campo_titulo_nombre, nombre)
+		val inicial = if (campo.isPassword || (Build.VERSION.SDK_INT >= 26 && campo.isShowingHintText)) "" else campo.text?.toString().orEmpty()
+		val volver = { lector.manejador.postDelayed({ if (Nodos.vivo(campo)) lector.enfocar(campo, null) }, 300) }
+		ventanas.pedirTexto(titulo, t.getString(R.string.escribir_campo_pista), inicial, contrasena = campo.isPassword, alCancelar = { volver() }) { texto ->
+			lector.manejador.postDelayed({
+				val datos = android.os.Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, texto) }
+				if (!runCatching { campo.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, datos) }.getOrDefault(false)) {
+					lector.decir(R.string.escribir_campo_fallo)
+				}
+				if (Nodos.vivo(campo)) lector.enfocar(campo, null)
+			}, 300)
+		}
+	}
+
+	/**
+	 * Todo lo escrito en el campo que tiene el foco de entrada (o el enfocado), sin moverse de donde se está; si está
+	 * vacío, «vacío» y lo que pide (SandFly 15e6d3f3a). En una contraseña sin mostrar, solo cuántos caracteres tiene.
+	 */
+	private fun leerCampo(): Boolean {
+		val campo = lector.raiz()?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable } ?: objetivo()?.takeIf { it.isEditable }
+		if (campo == null) {
+			lector.decir(R.string.cursor_sin_campo)
+			return false
+		}
+		runCatching { campo.refresh() }
+		val vacio = (Build.VERSION.SDK_INT >= 26 && campo.isShowingHintText) || campo.text.isNullOrEmpty()
+		if (vacio) {
+			val pista = if (Build.VERSION.SDK_INT >= 26) campo.hintText?.toString()?.trim().orEmpty() else ""
+			lector.decir(if (pista.isEmpty()) t.getString(R.string.leer_campo_vacio) else t.getString(R.string.leer_campo_vacio_pista, pista))
+			return true
+		}
+		val texto = campo.text.toString()
+		if (campo.isPassword) {
+			lector.decir(t.resources.getQuantityString(R.plurals.contar_caracteres, texto.length, texto.length))
+			return true
+		}
+		lector.decir(texto)
+		return true
+	}
+
 	private fun contarTexto(): Boolean {
 		val campo = lector.raiz()?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable } ?: objetivo()
 		if (campo == null) {
@@ -1373,6 +1426,37 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		audio.dispatchMediaKeyEvent(KeyEvent(ahora, ahora, KeyEvent.ACTION_UP, codigo, 0))
 		lector.sonidos.tocar(Sonido.ACTIVAR)
 		return true
+	}
+
+	/**
+	 * Avanza o retrocede [SALTO_MULTIMEDIA_MS] en lo que suena (Ideafix): con el acceso a las notificaciones, en la
+	 * sesión que suena, desde donde va; si no se puede, con las teclas de avance rápido y rebobinado.
+	 */
+	private fun avanzarMultimedia(adelante: Boolean): Boolean {
+		try {
+			val gestor = servicio.getSystemService(android.media.session.MediaSessionManager::class.java)
+			val oyente = android.content.ComponentName(servicio, com.xebolax.tiresias.servicio.OyenteAvisos::class.java)
+			val sesion = gestor?.getActiveSessions(oyente)?.firstOrNull { it.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING }
+			val estado = sesion?.playbackState
+			if (sesion != null && estado != null && estado.actions and android.media.session.PlaybackState.ACTION_SEEK_TO != 0L) {
+				// Donde va ahora: lo último que dijo la app más lo que ha pasado desde entonces, a su velocidad
+				val pasado = ((SystemClock.elapsedRealtime() - estado.lastPositionUpdateTime) * estado.playbackSpeed).toLong()
+				val ahora = (estado.position + pasado).coerceAtLeast(0L)
+				val duracion = sesion.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+				var destino = ahora + if (adelante) SALTO_MULTIMEDIA_MS else -SALTO_MULTIMEDIA_MS
+				destino = destino.coerceAtLeast(0L)
+				if (duracion > 0) destino = destino.coerceAtMost(duracion)
+				sesion.transportControls.seekTo(destino)
+				lector.sonidos.tocar(Sonido.ACTIVAR)
+				return true
+			}
+		} catch (e: SecurityException) {
+			// Sin el acceso a las notificaciones: con las teclas
+			com.xebolax.tiresias.base.Registro.i(ETIQUETA, "Sin acceso a las sesiones multimedia para avanzar: se usan las teclas")
+		} catch (e: RuntimeException) {
+			com.xebolax.tiresias.base.Registro.w(ETIQUETA, "No se pudo avanzar en lo que suena", e)
+		}
+		return teclaMultimedia(if (adelante) KeyEvent.KEYCODE_MEDIA_FAST_FORWARD else KeyEvent.KEYCODE_MEDIA_REWIND)
 	}
 
 	/** Dónde está el cursor en el campo: el carácter (o lo seleccionado) y la línea, de cuántos. */
@@ -2408,6 +2492,10 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	}
 
 	companion object {
+		/** La velocidad de «Repetir más despacio», en tanto por ciento de la normal (SandFly: un 15 % menos). */
+		private const val VELOCIDAD_DESPACIO = 80
+		/** Lo que se avanza o se retrocede en lo que suena con el control «Avanzar y retroceder». */
+		private const val SALTO_MULTIMEDIA_MS = 10_000L
 		/** Lo que se espera tras la última pulsación para decir el volumen de la voz. */
 		private const val DECIR_VOLUMEN_MS = 300L
 		/** El texto más largo que se abre en la edición por partes. */

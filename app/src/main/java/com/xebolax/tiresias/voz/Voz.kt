@@ -492,7 +492,10 @@ class Voz(contexto: Context) {
 				if (callada) {
 					soltarFoco()
 					ponerActiva(false)
-					pista.cerrarSiCallada(CERRAR_PISTA_MS)
+					// Con música o un audiolibro sonando, la pista se cierra antes: hay apps que bajan su volumen mientras
+					// suene algo de accesibilidad (el Lector Universal), y con la pista abierta 5 s el libro seguía bajo
+					// todo ese rato después de hablar (Ideafix)
+					pista.cerrarSiCallada(if (otraAppSuena()) CERRAR_PISTA_CON_MUSICA_MS else CERRAR_PISTA_MS)
 				}
 				continue
 			}
@@ -627,6 +630,9 @@ class Voz(contexto: Context) {
 		}.onFailure { Registro.w(ETIQUETA, "No se pudo avisar con vibración", it) }
 	}
 
+	/** Si suena música, un audiolibro o un vídeo de otra app (no la voz de Tiresias). */
+	private fun otraAppSuena(): Boolean = runCatching { audio.isMusicActive }.getOrDefault(false)
+
 	private fun soltarFoco() {
 		val f = foco ?: return
 		foco = null
@@ -676,5 +682,7 @@ class Voz(contexto: Context) {
 		/** Lo que se dice del elemento enfocado y de lo que se escribe en él. */
 		private val DEL_FOCO = setOf(Tipo.NAVEGACION, Tipo.ESCRITURA)
 		private const val CERRAR_PISTA_MS = 5_000L
+		/** Lo mismo con música de otra app sonando (que puede seguir bajada mientras la pista esté abierta). */
+		private const val CERRAR_PISTA_CON_MUSICA_MS = 1_200L
 	}
 }

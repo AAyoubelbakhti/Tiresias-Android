@@ -26,8 +26,11 @@
 	<string name="ia_gemini">Gemini</string>
 	<string name="ia_compatible">compatible server</string>
 	<string name="ia_instrucciones">You are the assistant of a screen reader for blind people. Always answer in %1$s, in clear sentences and without formatting (no asterisks, hash signs or bulleted lists), because the answer will be listened to. When describing an image or a screen: the most important thing first, then the useful details, any visible text exactly as it appears, and where the buttons are. Do not make up anything that cannot be seen.</string>
-	<string name="ia_pedir_elemento">Describe this item on the screen. If it is a button or an icon, say what it does in two or three words and then describe it.</string>
-	<string name="ia_pedir_pantalla">Describe this screen: what app it seems to be, what is on it and what can be done.</string>
+	<string name="ia_pedir_elemento">Describe this element of the screen. If it is a button or an icon, say what it does in two or three words and then describe it. If it has text, read it in full and word for word, without summarising it. Focus on the main thing, not on what is around it.</string>
+	<string name="ia_pedir_pantalla">Describe this screen: what app it seems to be, what is on it and what can be done. If there is important text (a message, an invitation, a sign), read it word for word, without summarising it.</string>
+	<string name="ia_con_instrucciones">%1$s\n\nAlso, follow these instructions from the person: %2$s</string>
+	<string name="aj_ia_instrucciones">Your own instructions when describing</string>
+	<string name="aj_ia_instrucciones_res">What is added to the request to the AI when describing an element or the screen (for example: «always read all the text»). Empty, nothing.</string>
 	<string name="ia_titulo_elemento">Item description</string>
 	<string name="ia_titulo_pantalla">Screen description</string>
 	<string name="ia_titulo_pregunta">Question about the screen</string>

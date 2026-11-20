@@ -126,6 +126,14 @@ class Describir(private val etiqueta: (paquete: String, id: String) -> String? =
 			val chrome = extras.getCharSequence("AccessibilityNodeInfo.chromeRole")?.toString().orEmpty()
 			if (chrome in ROLES_CHROME) return null
 		}
+		// Firefox y los navegadores hechos con él (Tor Browser, Fennec) dan a lo de dentro de la página un rol en inglés
+		// aunque el móvil esté en español: «paragraph» al final de cada párrafo (Ideafix). Los de solo estructura no
+		// dicen nada útil; los de controles, Tiresias ya los dice en el idioma del usuario
+		if (propia != null) {
+			val minusculas = propia.trim().lowercase()
+			if (minusculas in ROLES_ESTRUCTURA) return null
+			if (minusculas in ROLES_EN_INGLES && Nodos.rol(n) !in setOf(com.xebolax.tiresias.nucleo.Rol.NINGUNO, com.xebolax.tiresias.nucleo.Rol.TEXTO)) return null
+		}
 		return propia?.takeIf { it.isNotBlank() }
 	}
 
@@ -209,6 +217,14 @@ class Describir(private val etiqueta: (paquete: String, id: String) -> String? =
 		private const val CLAVE_COMPLEMENTARIA = "androidx.view.accessibility.AccessibilityNodeInfoCompat.SUPPLEMENTAL_DESCRIPTION_KEY"
 		/** Los roles de Chrome que Tiresias dice con sus propias palabras. */
 		val ROLES_CHROME = setOf("link", "button", "checkBox", "radioButton", "image", "list", "listItem", "table", "cell", "textField", "comboBoxGrouping", "comboBoxMenuButton", "slider", "switch", "tab", "tabList", "menuItem", "menu", "heading", "searchBox", "textFieldWithComboBox", "popUpButton", "toggleButton", "rowHeader", "columnHeader", "row", "navigation", "main", "banner", "contentInfo", "form", "region")
+		/** Roles de solo estructura que dan algunos navegadores (Firefox, Tor Browser) en inglés: no se dicen. */
+		private val ROLES_ESTRUCTURA = setOf("paragraph", "text", "text leaf", "generic", "section", "document", "text container", "statictext", "static text")
+		/** Los nombres en inglés de roles que Tiresias sabe decir él (en el idioma del usuario). */
+		private val ROLES_EN_INGLES = setOf(
+			"link", "button", "check box", "checkbox", "radio button", "image", "graphic", "list", "list item", "table", "cell", "edit text",
+			"entry", "combo box", "slider", "switch", "tab", "tab list", "menu item", "menu", "heading", "row", "column header", "row header",
+			"toggle button", "search box", "progress bar", "grid", "landmark", "navigation", "main", "banner", "form", "region",
+		)
 		/** Los estados que Android pone solo a los controles estándar (en los idiomas de Tiresias y los más comunes). */
 		private val ESTADOS_DEL_SISTEMA = setOf(
 			"checked", "not checked", "unchecked", "on", "off", "selected", "not selected", "partially checked",

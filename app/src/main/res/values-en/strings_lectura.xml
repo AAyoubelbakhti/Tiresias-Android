@@ -123,6 +123,7 @@
 	<!-- Screen reading -->
 	<string name="lect_pantalla_bloqueo">Lock screen</string>
 	<string name="lect_dialogo">Dialog</string>
+	<string name="lect_autocompletar_pista">Choose an account to fill in the form, or press Back to type it yourself: Tiresias will open a box to type in.</string>
 	<string name="lect_teclado">On-screen keyboard</string>
 	<string name="lect_sin_titulo">Untitled</string>
 	<string name="nav_no_hay">No more %1$s</string>

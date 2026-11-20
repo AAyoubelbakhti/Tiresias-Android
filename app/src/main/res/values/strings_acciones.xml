@@ -323,6 +323,8 @@
 	<string name="accion_contar_texto">Contar caracteres y palabras</string>
 	<string name="accion_leer_desde_aqui_control">Leer desde aquí solo lo del control de lectura</string>
 	<string name="control_portapapeles">Portapapeles</string>
+	<string name="control_avance">avanzar y retroceder en lo que suena</string>
+	<string name="control_texto_ia">reconocer texto y traducir</string>
 	<string name="portapapeles_elemento">%1$s, %2$d de %3$d</string>
 	<string name="contar_y">%1$s y %2$s</string>
 	<plurals name="contar_caracteres">
@@ -337,6 +339,14 @@
 	</plurals>
 	<string name="lectura_nada_del_control">No hay %1$s desde aquí</string>
 	<string name="accion_preguntar_ia_voz">Preguntar a la IA sobre la pantalla, por voz</string>
+	<string name="accion_repetir_despacio">Repetir lo último más despacio</string>
+	<string name="accion_leer_campo">Leer todo el campo de texto</string>
+	<string name="leer_campo_vacio">Vacío</string>
+	<string name="leer_campo_vacio_pista">Vacío, %1$s</string>
+	<string name="escribir_campo_titulo">Escribir en el campo</string>
+	<string name="escribir_campo_titulo_nombre">Escribir en «%1$s»</string>
+	<string name="escribir_campo_pista">Lo que escribas aquí se pone en el campo</string>
+	<string name="escribir_campo_fallo">La app no ha dejado poner el texto en el campo</string>
 	<string name="gesto_volumen_arriba_una">Una vez volumen arriba</string>
 	<string name="gesto_volumen_abajo_una">Una vez volumen abajo</string>
 </resources>

@@ -267,9 +267,15 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 
 	// --- IA ---------------------------------------------------------------------------------
 
-	fun describirElemento(): Boolean = describir(lector.foco?.let { Nodos.limites(it) }, t.getString(R.string.ia_pedir_elemento), R.string.ia_titulo_elemento)
+	fun describirElemento(): Boolean = describir(lector.foco?.let { Nodos.limites(it) }, conInstrucciones(t.getString(R.string.ia_pedir_elemento)), R.string.ia_titulo_elemento)
 
-	fun describirPantalla(): Boolean = describir(null, t.getString(R.string.ia_pedir_pantalla), R.string.ia_titulo_pantalla)
+	fun describirPantalla(): Boolean = describir(null, conInstrucciones(t.getString(R.string.ia_pedir_pantalla)), R.string.ia_titulo_pantalla)
+
+	/** Lo que se pide a la IA, con las instrucciones propias de la persona detrás (Ajustes, IA), si ha puesto alguna. */
+	private fun conInstrucciones(pedido: String): String {
+		val propias = lector.ajustes.iaInstrucciones
+		return if (propias.isEmpty()) pedido else t.getString(R.string.ia_con_instrucciones, pedido, propias)
+	}
 
 	fun preguntar(): Boolean {
 		if (!necesitaCaptura()) return false

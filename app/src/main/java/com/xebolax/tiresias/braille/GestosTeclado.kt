@@ -8,7 +8,9 @@ import com.xebolax.tiresias.nucleo.Accion
 enum class AccionTeclado {
 	NINGUNA, BORRAR, BORRAR_PALABRA, ESPACIO, INTRO, CAMBIAR_TECLADO, BLOQUEAR_ORIENTACION,
 	MENU, DICTADO, EMOJIS, PORTAPAPELES, SUGERENCIAS, LEER_CAMPO, CALIBRAR, QUITAR_CALIBRACION,
-	BUSCAR_EMOJI, EDICION, CURSOR_ATRAS, CURSOR_ADELANTE, CAMBIAR_UNIDAD, SELECCIONAR, SELECCIONAR_TODO, COPIAR, CORTAR, PEGAR, DESHACER, REHACER, IR_PRINCIPIO, IR_FINAL, LEER_SELECCION, MENU_LECTOR, ESCONDER_TECLADO;
+	BUSCAR_EMOJI, EDICION, CURSOR_ATRAS, CURSOR_ADELANTE, CAMBIAR_UNIDAD, SELECCIONAR, SELECCIONAR_TODO, COPIAR, CORTAR, PEGAR, DESHACER, REHACER, IR_PRINCIPIO, IR_FINAL, LEER_SELECCION, MENU_LECTOR, ESCONDER_TECLADO,
+	// Un salto de línea siempre (también en las apps de mensajes) y enviar siempre: cada uno en su gesto (Cronopio)
+	NUEVA_LINEA, ENVIAR;
 
 	fun nombre(c: Context): String = c.getString(when (this) {
 		NINGUNA -> R.string.braille_accion_ninguna
@@ -43,6 +45,8 @@ enum class AccionTeclado {
 		LEER_SELECCION -> R.string.braille_accion_leer_seleccion
 		MENU_LECTOR -> R.string.braille_accion_menu_lector
 		ESCONDER_TECLADO -> R.string.braille_accion_esconder_teclado
+		NUEVA_LINEA -> R.string.braille_accion_nueva_linea
+		ENVIAR -> R.string.braille_accion_enviar
 	})
 }
 

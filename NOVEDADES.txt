@@ -1,3 +1,22 @@
+== 1.0.18
+- WhatsApp, «Reenviar a»: al tocar un contacto se enfoca ese contacto, no la lista entera de golpe. Deslizando se recorren uno a uno.
+- WhatsApp: el «Leer más» de los mensajes largos se pulsa solo al llegar al mensaje y se dice el resto. También es su propia parada, para pulsarlo a mano si se quita la apertura automática.
+- WhatsApp: al mantener pulsado un mensaje, el foco entra en la barra de reacciones. Lo mismo con cualquier ventana pequeña que se lleva el foco de la app.
+- WhatsApp: en un mensaje que responde a otro se dice primero la respuesta y después el mensaje al que responde.
+- WhatsApp: cuando llega un mensaje nuevo y la app vuelve a enfocar el mensaje que estabas leyendo, ya no se repite ni corta el audio que suena.
+- Iniciar sesión en páginas con contraseñas guardadas (por ejemplo, Tiflolibros en el Lector Universal): con un lector de pantalla, Android abre «Opciones de Autocompletar» y esconde el teclado cada vez que se pulsa el campo. Ahora Tiresias lo anuncia y entra en la lista: eliges una cuenta y se rellena; o pulsas Atrás y Tiresias abre un cuadro para escribir con tu teclado (el de AOSP, el de Google o el braille), y lo escrito se pone en el campo.
+- Teclado braille: la arroba es el punto 5 y el apóstrofo el punto 4, como en la signografía española.
+- Teclado braille: nuevo eco «Cada letra y cada palabra» (Ajustes, Braille, «Al escribir en braille, decir»).
+- Teclado braille: al enviar un mensaje o cambiar de campo, la palabra a medias se olvida. Antes, al empezar otro mensaje, se decía la última palabra del anterior.
+- Teclado braille: nuevas acciones «Nueva línea (también en los chats)» y «Enviar», para ponerlas en gestos distintos.
+- Con música o un audiolibro sonando, su volumen vuelve antes a la normalidad cuando Tiresias termina de hablar.
+- Nuevo control de lectura «Avanzar y retroceder en lo que suena»: arriba retrocede y abajo avanza diez segundos.
+- Nuevo control de lectura «Reconocer texto y traducir»: arriba reconoce el texto del elemento y abajo lo traduce con la IA.
+- Nuevas acciones «Repetir lo último más despacio» y «Leer todo el campo de texto».
+- IA: al describir una imagen se pide que lea el texto entero tal cual, sin resumirlo, y que se centre en lo principal. Nuevo ajuste «Instrucciones propias al describir» (Ajustes, IA) para añadir lo que quieras.
+- Navegadores hechos con Firefox (como Tor Browser): ya no se dice «paragraph» al final de cada párrafo ni otros roles en inglés.
+- Al empezar a sonar una llamada ya no se dice «volumen otro».
+- Los juegos hechos con Flutter que pasan de página en página ya no cambian de página solos al seguir deslizando.
 == 1.0.17
 - Páginas web: lo que está más abajo de lo que se ve también se recorre deslizando, y la página se desplaza sola para enseñarlo. Las respuestas largas de los chats de inteligencia artificial y las noticias se leen enteras, sin saltar al campo de preguntar o a lo que la página deja fijo abajo.
 - Páginas web: lo que se pulsa pero no es un botón ni un enlace y lleva mucho texto dentro (la burbuja de una respuesta) se lee párrafo a párrafo, en vez de todo de golpe y cortado. El doble toque en un párrafo lo pulsa entero.

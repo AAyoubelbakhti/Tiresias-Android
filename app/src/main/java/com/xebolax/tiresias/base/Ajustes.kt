@@ -473,6 +473,9 @@ class Ajustes(contexto: Context) {
 	val brailleSensor: Boolean get() = logico(Claves.BRAILLE_SENSOR, false)
 	val brailleEco: String get() = cadena(Claves.BRAILLE_ECO, "letras")
 
+	/** Lo que se añade a lo que se pide a la IA al describir un elemento o la pantalla (Dharius): vacío, nada. */
+	val iaInstrucciones: String get() = cadena(Claves.IA_INSTRUCCIONES, "").trim()
+
 	/** Las combinaciones de la línea braille que el usuario ha cambiado («12=ATRAS;13=NINGUNA»). */
 	var acordesBraille: String
 		get() = cadena(Claves.BRAILLE_ACORDES, "")
@@ -985,6 +988,7 @@ object Claves {
 	const val BRAILLE_ESPEJO = "braille_espejo"
 	const val BRAILLE_SENSOR = "braille_sensor"
 	const val BRAILLE_ECO = "braille_eco"
+	const val IA_INSTRUCCIONES = "ia_instrucciones"
 	const val BRAILLE_ACORDES = "braille_acordes"
 	const val BRAILLE_CURSOR = "braille_cursor"
 	const val LEER_MAS_SOLO = "leer_mas_solo"

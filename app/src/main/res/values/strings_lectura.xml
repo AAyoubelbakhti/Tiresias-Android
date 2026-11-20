@@ -133,6 +133,7 @@
 	<!-- Lectura de pantallas -->
 	<string name="lect_pantalla_bloqueo">Pantalla de bloqueo</string>
 	<string name="lect_dialogo">Diálogo</string>
+	<string name="lect_autocompletar_pista">Elige una cuenta para rellenar el formulario, o pulsa Atrás para escribir tú: Tiresias abrirá un cuadro para escribir.</string>
 	<string name="lect_teclado">Teclado en pantalla</string>
 	<string name="lect_sin_titulo">Sin título</string>
 	<string name="nav_no_hay">No hay más %1$s</string>

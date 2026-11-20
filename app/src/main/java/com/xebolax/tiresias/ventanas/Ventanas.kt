@@ -75,11 +75,12 @@ class Ventanas(private val servicio: AccessibilityService) {
 	}
 
 	/** Pide un texto (buscar, etiquetar). [alAceptar] recibe lo escrito. */
-	fun pedirTexto(titulo: String, pista: String, inicial: String = "", alCancelar: () -> Unit = {}, alAceptar: (String) -> Unit) = principal.post {
+	fun pedirTexto(titulo: String, pista: String, inicial: String = "", alCancelar: () -> Unit = {}, contrasena: Boolean = false, alAceptar: (String) -> Unit) = principal.post {
 		val c = contexto()
 		val campo = TextInputEditText(c).apply {
 			setText(inicial)
-			inputType = InputType.TYPE_CLASS_TEXT
+			// (una contraseña: el teclado no la aprende ni la sugiere, y se lee como cualquier contraseña)
+			inputType = if (contrasena) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_CLASS_TEXT
 			setSingleLine()
 			// La tecla Intro (o Buscar) del teclado acepta, como el botón Aceptar
 			imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE

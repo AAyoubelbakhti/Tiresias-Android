@@ -319,6 +319,8 @@
 	<string name="accion_contar_texto">Count characters and words</string>
 	<string name="accion_leer_desde_aqui_control">Read from here only the reading control\'s items</string>
 	<string name="control_portapapeles">Clipboard</string>
+	<string name="control_avance">fast forward and rewind</string>
+	<string name="control_texto_ia">recognise text and translate</string>
 	<string name="portapapeles_elemento">%1$s, %2$d of %3$d</string>
 	<string name="contar_y">%1$s and %2$s</string>
 	<plurals name="contar_caracteres">
@@ -331,6 +333,14 @@
 	</plurals>
 	<string name="lectura_nada_del_control">No %1$s from here</string>
 	<string name="accion_preguntar_ia_voz">Ask the AI about the screen, by voice</string>
+	<string name="accion_repetir_despacio">Repeat the last phrase more slowly</string>
+	<string name="accion_leer_campo">Read the whole text field</string>
+	<string name="leer_campo_vacio">Empty</string>
+	<string name="leer_campo_vacio_pista">Empty, %1$s</string>
+	<string name="escribir_campo_titulo">Type in the field</string>
+	<string name="escribir_campo_titulo_nombre">Type in «%1$s»</string>
+	<string name="escribir_campo_pista">What you type here goes into the field</string>
+	<string name="escribir_campo_fallo">The app did not let the text be put in the field</string>
 	<string name="gesto_volumen_arriba_una">Press volume up once</string>
 	<string name="gesto_volumen_abajo_una">Press volume down once</string>
 </resources>

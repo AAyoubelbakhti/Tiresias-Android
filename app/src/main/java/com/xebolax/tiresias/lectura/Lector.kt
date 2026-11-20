@@ -372,6 +372,12 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		// braille, «Superficie del teclado braille», «Teclado en pantalla» y la barra de navegación cortaban su aviso
 		if (superficie.abierta && e.eventType and CALLADOS_CON_SUPERFICIE != 0) {
 			if (e.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED || e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) olvidarCaches()
+			// Una ventana que sale con la superficie aún puesta y se lleva el foco («Opciones de Autocompletar» al pulsar
+			// un campo con el teclado braille): esconde el teclado, la superficie se va y no se había mirado. Se mira luego
+			if (e.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+				manejador.removeCallbacks(revisarEmergentes)
+				manejador.postDelayed(revisarEmergentes, ESPERA_EMERGENTE_TRAS_SUPERFICIE_MS)
+			}
 			return
 		}
 		// El botón «Girar pantalla» que Android pone solo al inclinar el móvil con el giro bloqueado: no se dice cada
@@ -1026,12 +1032,28 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			runCatching { actual.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) }
 			return
 		}
+		// La app vuelve a poner el foco, sin que la persona haya hecho nada, en lo mismo que se estaba leyendo: al llegar
+		// un mensaje nuevo, la lista de WhatsApp se rehace y enfoca otra vez el mensaje de antes, que se volvía a leer
+		// cortando el audio que sonaba (Lucerito_Stefi). Se cambia el foco en silencio
+		if (!yaDicho && actual != null && n.windowId == ventanaFocoDicho && sinTocarDesde(ahora, SIN_TOCAR_MS) &&
+			textoFocoDicho.isNotEmpty() && compositor.describir(elemento(n), verbosidad) == textoFocoDicho) {
+			cambiarFoco(n)
+			return
+		}
 		cambiarFoco(n)
 		if (yaDicho) return
 		// Justo después de anunciar una ventana, el foco inicial va detrás del título (no lo corta)
 		val modo = if (ahora - momentoVentana < 600) Modo.ENCOLAR else Modo.INTERRUMPIR
 		decirElemento(n, modo)
 	}
+
+	/** Lo último dicho de un elemento enfocado y su ventana, para no repetirlo si la app lo vuelve a enfocar sola. */
+	private var textoFocoDicho = ""
+	private var ventanaFocoDicho = -1
+
+	/** Si la persona no ha tocado la pantalla, ni pulsado una tecla, ni movido el foco en los últimos [ms]. */
+	private fun sinTocarDesde(ahora: Long, ms: Long): Boolean =
+		ahora - momentoUsuario > ms && ahora - momentoTecla > ms && ahora - momentoMovido > ms
 
 	/** Pone el foco de accesibilidad en [n] y lo dice enseguida (sin esperar a la app). */
 	fun enfocar(n: AccessibilityNodeInfo, sonido: Sonido? = Sonido.FOCO, modo: Modo = Modo.INTERRUMPIR) {
@@ -1092,10 +1114,16 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	 * Telegram, android_accesible, julio de 2026), se pulsa solo y, cuando la app
 	 * enseña el mensaje entero, se dice lo que faltaba, a la cola.
 	 */
-	private fun abrirLeerMas(n: AccessibilityNodeInfo) {
+	private fun abrirLeerMas(n: AccessibilityNodeInfo, intento: Int = 0) {
 		if (n == leerMasPulsado) return
 		val enlaces = Nodos.enlacesEnTexto(n)
-		val (texto, enlace) = enlaces.lastOrNull()?.takeIf { LEER_MAS.matches(it.first.trim()) } ?: return
+		val (texto, enlace) = enlaces.lastOrNull()?.takeIf { LEER_MAS.matches(it.first.trim()) } ?: run {
+			// (el botón virtual de WhatsApp aparece un momento después de que se vea el mensaje: se vuelve a mirar una vez)
+			if (!abrirBotonLeerMas(n) && !abrirLeerMasPintado(n) && intento == 0) {
+				manejador.postDelayed({ if (foco == n && n != leerMasPulsado) abrirLeerMas(n, 1) }, ESPERA_LEER_MAS_MS * 2)
+			}
+			return
+		}
 		// El texto que lleva el enlace: el propio elemento o, en una fila (un mensaje de WhatsApp es un marco con el
 		// texto dentro), el texto de dentro. Antes se miraba solo el del elemento: en una fila no tiene, y el mensaje
 		// se abría pero el resto no se decía (suzuqui)
@@ -1109,6 +1137,52 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			return
 		}
 		decirRestoLeerMas(n, origen, antes, texto, 0)
+	}
+
+	/**
+	 * El «Leer más» de un mensaje largo de WhatsApp (noviembre de 2026) es un botón virtual dentro del texto, no un
+	 * enlace: se pulsa y se dice lo que faltaba (Cronopio). Devuelve si lo había.
+	 */
+	private fun abrirBotonLeerMas(n: AccessibilityNodeInfo): Boolean {
+		val boton = Nodos.botonLeerMas(n) ?: return false
+		val origen = Nodos.textoQueAcabaEn(n, LEER_MAS_FINAL) ?: runCatching { boton.parent }.getOrNull() ?: n
+		val texto = textoDe(origen)
+		val m = LEER_MAS_FINAL.find(texto)
+		val antes = (if (m != null) texto.substring(0, m.range.first) else texto).trim().trimEnd('.', '…', ' ')
+		val palabras = m?.groupValues?.get(1) ?: (boton.contentDescription ?: boton.text)?.toString()?.trim().orEmpty()
+		leerMasPulsado = n
+		if (!runCatching { boton.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)) {
+			Registro.i(ETIQUETA, "La app no aceptó la pulsación de «Leer más»")
+			return false
+		}
+		decirRestoLeerMas(n, origen, antes, palabras, 0)
+		return true
+	}
+
+	/**
+	 * Un «… Leer más» que la app pinta al final del texto sin hacerlo enlace (los mensajes largos de WhatsApp desde
+	 * noviembre de 2026: no hay enlace ni vista aparte, y al tocar esas palabras se abre el mensaje): se toca donde
+	 * están, con un gesto, y se dice lo que faltaba (Cronopio). Si la app no dice dónde están las letras, nada.
+	 */
+	private fun abrirLeerMasPintado(n: AccessibilityNodeInfo): Boolean {
+		val origen = Nodos.textoQueAcabaEn(n, LEER_MAS_FINAL) ?: return false
+		val texto = textoDe(origen)
+		val m = LEER_MAS_FINAL.find(texto) ?: return false
+		val palabras = m.groupValues[1]
+		val inicio = m.range.first + m.value.indexOf(palabras)
+		val caja = Nodos.cajaDeLetras(origen, inicio, palabras.length) ?: run {
+			Registro.i(ETIQUETA, "«Leer más» sin botón ni posición de sus letras: no se puede abrir solo")
+			return false
+		}
+		val antes = texto.substring(0, m.range.first).trim().trimEnd('.', '…', ' ')
+		leerMasPulsado = n
+		val camino = android.graphics.Path().apply { moveTo(caja.centerX(), caja.centerY()) }
+		val gesto = android.accessibilityservice.GestureDescription.Builder()
+			.addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(camino, 0, 60))
+			.build()
+		if (!mandarGesto(gesto)) return false
+		decirRestoLeerMas(n, origen, antes, palabras, 0)
+		return true
 	}
 
 	private fun textoDe(n: AccessibilityNodeInfo): String = (n.text ?: n.contentDescription)?.toString().orEmpty()
@@ -1126,7 +1200,12 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			}
 			// Lo que se dice del elemento ha cambiado: se vuelve a describir la próxima vez
 			olvidarDescrito(n)
-			val resto = if (antes.isNotEmpty() && despues.startsWith(antes)) despues.substring(antes.length).trim() else despues
+			// (si lo que se veía acababa a media palabra, «un texto l…», se dice desde el principio de esa palabra)
+			var corte = antes.length
+			if (corte in 1 until despues.length && despues[corte].isLetterOrDigit() && antes.last().isLetterOrDigit()) {
+				corte = antes.lastIndexOf(' ') + 1
+			}
+			val resto = if (antes.isNotEmpty() && despues.startsWith(antes)) despues.substring(corte).trim() else despues
 			if (resto.isNotEmpty()) voz.decir(Enunciado(resto, Modo.ENCOLAR, Tipo.NAVEGACION, vigente = { foco == n }))
 		}, ESPERA_LEER_MAS_MS)
 	}
@@ -1236,6 +1315,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			}
 		}
 		val normal = compositor.describir(elemento, verbosidad)
+		textoFocoDicho = normal
+		ventanaFocoDicho = n.windowId
 		// Un complemento de esta app puede cambiar lo que se dice (arreglar etiquetas, quitar ruido)
 		val texto = if (scriptsListos) scripts.alEnfocar(n.packageName?.toString().orEmpty(), elemento, normal) ?: normal else normal
 		if (sonido != null) {
@@ -1250,7 +1331,10 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		// Al entrar en un contenedor con título (Android 14, containerTitle), se dice antes su título
 		val contenedor = tituloContenedor(n)
-		val dicho = if (contenedor != null && contenedor != ultimoContenedor) "$contenedor, $texto" else texto
+		val conContenedor = if (contenedor != null && contenedor != ultimoContenedor) "$contenedor, $texto" else texto
+		// Con «Leer más» automático, el «… Leer más» del final de un mensaje cortado no se dice: se abre solo y detrás
+		// va el resto del mensaje (se oía «…un texto l… Leer más» antes de seguir)
+		val dicho = if (ajustes.leerMasSolo) LEER_MAS_CORTADO.replace(conContenedor, "…") else conContenedor
 		ultimoContenedor = contenedor
 		// Las teclas del teclado en pantalla, siempre en el idioma de Tiresias: la «u» con el idioma que marca el teclado sonaba «iu».
 		// Las de un solo carácter van por el mismo camino que el eco al escribir (deletrear), con el tono de mayúscula si se quiere
@@ -1810,6 +1894,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		// (si Android no da la lista de ventanas, no se sabe nada del teclado: no se cambia lo que había)
 		val ventanas = runCatching { servicio.windows }.getOrNull() ?: return
+		// Se cerró «Opciones de Autocompletar» (el aviso no siempre dice qué ventana se quitó): se mira si sigue
+		autocompletar?.let { a -> if (ventanas.none { it.id == a.ventana }) manejador.postDelayed({ volverAlCampoAutocompletado() }, ESPERA_TECLADO_AUTOCOMPLETAR_MS) }
 		val teclado = ventanas.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
 		// El teclado en pantalla aparece: se dice una vez. No cuando pasa a ser la ventana activa (al explorar sus teclas
 		// o al escribir cada letra), ni cuando el teclado se rehace al momento (al cambiar de idioma o de teclas)
@@ -1823,6 +1909,97 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		perfiles.alCambiarTeclado(if (teclado != null) paqueteTeclado() else null)
 		// Con «Toque directo en el teclado», los toques en el teclado en pantalla pasan directos a él
 		zonasDelTeclado(teclado)
+		// Una ventana emergente que se queda con el foco de la app: se entra en ella
+		if (Build.VERSION.SDK_INT >= 28 && e.windowChanges and AccessibilityEvent.WINDOWS_CHANGE_ADDED != 0) {
+			ventanas.firstOrNull { it.id == e.windowId }?.takeIf { esEmergenteConFoco(it) }?.let { entrarEnEmergente(it) }
+		}
+	}
+
+	/**
+	 * Una ventana emergente pegada a otra (no una pantalla ni un diálogo) que se lleva el foco de la ventana: la barra
+	 * de reacciones de WhatsApp al mantener un mensaje (Cronopio) o las «Opciones de Autocompletar» de Android con las
+	 * contraseñas guardadas, que dejan sin teclado hasta que se elige una o se cierran (Tiflolibros en el Lector
+	 * Universal). Antes Tiresias ni las decía ni entraba en ellas: la persona no sabía que estaban. Las listas de
+	 * sugerencias que no se llevan el foco (las de un campo de búsqueda) no cuentan: el teclado sigue ahí.
+	 */
+	private fun esEmergenteConFoco(v: AccessibilityWindowInfo): Boolean {
+		if (v.type != AccessibilityWindowInfo.TYPE_APPLICATION || !v.isFocused || v.parent == null) return false
+		if (foco?.windowId == v.id) return false
+		val r = android.graphics.Rect().also { v.getBoundsInScreen(it) }
+		val pantalla = servicio.resources.displayMetrics
+		if (r.width() >= pantalla.widthPixels && r.height() >= pantalla.heightPixels * 9 / 10) return false
+		return v.root?.packageName?.toString() != servicio.packageName
+	}
+
+	/** Mira, ya sin superficie braille encima, si hay una ventana emergente con el foco en la que no se ha entrado. */
+	private val revisarEmergentes = Runnable {
+		if (superficie.abierta || Build.VERSION.SDK_INT < 28) return@Runnable
+		runCatching { servicio.windows }.getOrNull()?.firstOrNull { esEmergenteConFoco(it) }?.let { entrarEnEmergente(it) }
+	}
+
+	/** La ventana «Opciones de Autocompletar» que está abierta, el campo que la abrió y lo que tenía escrito. */
+	private class Autocompletar(val ventana: Int, val campo: AccessibilityNodeInfo, val texto: String)
+	private var autocompletar: Autocompletar? = null
+
+	/**
+	 * Android, con un lector de pantalla, deja que «Opciones de Autocompletar» se quede con el foco de la ventana, y el
+	 * teclado se esconde: no se podía escribir el usuario o la contraseña a mano (Tiflolibros en el Lector Universal,
+	 * con el teclado de AOSP, el de Google o el braille). Si se cierra (Atrás) sin elegir nada, el campo se vuelve a
+	 * pulsar y el teclado sale: Android no la vuelve a abrir para el mismo campo.
+	 */
+	private fun volverAlCampoAutocompletado() {
+		val a = autocompletar ?: return
+		autocompletar = null
+		val ventanas = runCatching { servicio.windows }.getOrNull() ?: return
+		if (ventanas.any { it.id == a.ventana }) return
+		if (ventanas.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }) return
+		val campo = a.campo
+		if (!Nodos.vivo(campo)) return
+		runCatching { campo.refresh() }
+		// Se eligió una cuenta: el campo ya está relleno y no hace falta el teclado
+		if (campo.text?.toString().orEmpty() != a.texto) return
+		// La persona se fue a otra cosa (tocó fuera de la ventana): no se le abre nada
+		val actual = foco
+		if (actual != null && actual != campo && actual.windowId != a.ventana && actual.windowId == campo.windowId && !actual.isEditable) return
+		Registro.i(ETIQUETA, "Opciones de Autocompletar cerradas sin elegir: cuadro para escribir")
+		alEscribirEnCampo?.invoke(campo)
+	}
+
+	/**
+	 * Abre el cuadro de Tiresias para escribir en un campo (lo pone el servicio: es del ejecutor, que tiene las
+	 * ventanas). Con un lector de pantalla, Android vuelve a abrir «Opciones de Autocompletar» cada vez que se pulsa
+	 * el campo, con un toque o con el doble toque, y el teclado nunca sale: así se puede escribir igual.
+	 */
+	var alEscribirEnCampo: ((AccessibilityNodeInfo) -> Unit)? = null
+
+	private fun entrarEnEmergente(v: AccessibilityWindowInfo) {
+		val ahora = SystemClock.uptimeMillis()
+		val titulo = v.title?.toString()?.trim().orEmpty()
+		val raizVentana = v.root
+		val autocompletar = raizVentana?.viewIdResourceName == "android:id/autofill_dataset_picker"
+		// El campo que la abrió (el que tenía el foco), para devolverle el teclado si se cierra sin elegir nada
+		if (autocompletar) {
+			// (el campo con el foco de entrada en la ventana de la que cuelga; si no, el enfocado por Tiresias)
+			val campo = runCatching { v.parent?.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()?.takeIf { it.isEditable }
+				?: runCatching { servicio.windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.id != v.id && it.isActive.not() }?.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()?.takeIf { it.isEditable }
+				?: foco?.takeIf { it.isEditable }
+			this.autocompletar = campo?.let { Autocompletar(v.id, it, it.text?.toString().orEmpty()) }
+			Registro.i(ETIQUETA, "Opciones de Autocompletar abiertas; campo conocido: ${this.autocompletar != null}")
+		}
+		val repetido = titulo == tituloVentana && v.id == idVentanaTitulo && ahora - momentoVentana < 1500
+		if (titulo.isNotEmpty() && !repetido && !grabandoNota(raizVentana?.packageName)) {
+			tituloVentana = titulo
+			idVentanaTitulo = v.id
+			momentoVentana = ahora
+			sonidos.tocar(Sonido.VENTANA)
+			voz.decir(Enunciado(titulo, modo = Modo.INTERRUMPIR, tipo = Tipo.NAVEGACION))
+			if (autocompletar) voz.decir(Enunciado(textos.getString(R.string.lect_autocompletar_pista), modo = Modo.ENCOLAR, tipo = Tipo.ANUNCIO))
+		}
+		cuandoEstable(v.id, ahora + esperaVentana()) {
+			if (foco?.windowId == v.id) return@cuandoEstable
+			val r = runCatching { servicio.windows.firstOrNull { it.id == v.id }?.root }.getOrNull() ?: return@cuandoEstable
+			navegador.orden(r).firstOrNull()?.let { enfocar(it, null, Modo.ENCOLAR) }
+		}
 	}
 
 	// CONTENT_CHANGE_TYPE_STATE_DESCRIPTION (Android 11) es una constante: antes nunca llega ese tipo, sin fallo
@@ -2194,6 +2371,10 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 
 		/** Los enlaces que abren el resto de un mensaje («Leer más», «Ver más», «Read more»...). */
 		private val LEER_MAS = Regex("(?i)[.…\\s]*(leer|ver|mostrar|read|see|show|lire|mehr|leggi) ?(más|mas|more|la suite|anzeigen|altro)\\.*…?")
+		/** «… Leer más» detrás de un texto cortado, en lo que se dice de una fila (luego puede venir la hora). */
+		private val LEER_MAS_CORTADO = Regex("(?i)(?:\\.\\.\\.|…)\\s*(?:leer|ver|mostrar|read|see|show|lire|mehr|leggi) ?(?:más|mas|more|la suite|anzeigen|altro)(?=\\s*(?:,|\\.|$))")
+		/** El mismo «Leer más», pintado al final del texto detrás de unos puntos suspensivos (sin ser enlace). */
+		private val LEER_MAS_FINAL = Regex("(?i)(?:\\.\\.\\.|…)\\s*((?:leer|ver|mostrar|read|see|show|lire|mehr|leggi) ?(?:más|mas|more|la suite|anzeigen|altro))\\s*$")
 		/** Lo que puede tardar en salir el panel de volumen tras pulsar una tecla de volumen. */
 		private const val PANEL_VOLUMEN_MS = 2_000L
 		/** Lo que como mucho sigue a la vista ese panel sin tocarlo: mientras, el foco que pida no se sigue. */
@@ -2203,6 +2384,12 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		/** Cada cuánto se mira si la app ya enseña el mensaje entero tras pulsar «Leer más», y cuántas veces más. */
 		private const val ESPERA_LEER_MAS_MS = 400L
 		private const val REINTENTOS_LEER_MAS = 3
+		/** Lo que se espera, tras un cambio de ventanas con la superficie braille puesta, para mirar si salió una emergente. */
+		private const val ESPERA_EMERGENTE_TRAS_SUPERFICIE_MS = 700L
+		/** Lo que se espera tras cerrarse «Opciones de Autocompletar» para volver a pulsar el campo. */
+		private const val ESPERA_TECLADO_AUTOCOMPLETAR_MS = 450L
+		/** Lo que tiene que pasar sin que la persona haga nada para que un foco que pone la app sea «suyo». */
+		private const val SIN_TOCAR_MS = 1_500L
 
 		/** Las vistas que solo contienen y desplazan (sin modo táctil reciben el foco de entrada al abrir una ventana). */
 		private val CONTENEDORES = setOf("ScrollView", "NestedScrollView", "HorizontalScrollView", "ListView", "GridView", "RecyclerView", "ViewPager", "ViewPager2")

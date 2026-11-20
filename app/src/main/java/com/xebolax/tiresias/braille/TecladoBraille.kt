@@ -118,6 +118,9 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 		lista = null
 		busqueda = null
 		if (!restarting) edicion.reiniciar()
+		// Otro campo u otro texto: la palabra a medias del anterior ya no es de este (Cronopio: al empezar un mensaje
+		// nuevo se decía la última palabra del que se acababa de enviar)
+		palabra.clear()
 		consultaAvisada = false
 		gestos = GestosTeclado.leer(Ajustes(this).gestosTecladoBraille)
 		gestosLector = GestosTeclado.leerLector(Ajustes(this).gestosTecladoBraille)
@@ -345,8 +348,9 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 		palabra.append(escrito)
 		// Un clic por letra escrita (con «Sonidos al escribir»; no si ya suena cada punto, que serían varios a la vez)
 		if (!Ajustes(this).brailleSonarPuntos) sonarTecla(Sonido.TECLA)
-		// El eco: la letra (lo normal), nada, o la palabra al terminarla con un espacio
-		if (Ajustes(this).brailleEco == ECO_LETRAS) decirEscrito(escrito)
+		// El eco: la letra (lo normal), nada, la palabra al terminarla con un espacio, o las dos cosas
+		val eco = Ajustes(this).brailleEco
+		if (eco == ECO_LETRAS || eco == ECO_AMBOS) decirEscrito(escrito)
 		mirarMenciones()
 	}
 
@@ -371,6 +375,8 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 			AccionTeclado.BORRAR_PALABRA -> borrarPalabra()
 			AccionTeclado.ESPACIO -> espacio()
 			AccionTeclado.INTRO -> intro()
+			AccionTeclado.NUEVA_LINEA -> nuevaLinea()
+			AccionTeclado.ENVIAR -> enviar()
 			AccionTeclado.CAMBIAR_TECLADO -> cambiarTeclado()
 			AccionTeclado.BLOQUEAR_ORIENTACION -> alternarBloqueo()
 			AccionTeclado.MENU -> abrirMenu()
@@ -431,13 +437,30 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 	/** Lo escrito desde el último espacio (para el eco de palabras). */
 	private val palabra = StringBuilder()
 
+	/**
+	 * El cursor se ha movido o el texto ha cambiado sin el teclado (se envió el mensaje y el campo se vació, se movió
+	 * el cursor con los gestos, se pegó algo): si lo de antes del cursor ya no acaba en la palabra a medias, esa
+	 * palabra se da por terminada sin decirla (SandFly 08dd23621). Si no, al escribir otro texto se decía la última
+	 * palabra del anterior pegada a la nueva (Cronopio).
+	 */
+	override fun onUpdateSelection(antesInicio: Int, antesFin: Int, inicio: Int, fin: Int, candidatosInicio: Int, candidatosFin: Int) {
+		super.onUpdateSelection(antesInicio, antesFin, inicio, fin, candidatosInicio, candidatosFin)
+		if (palabra.isEmpty()) return
+		if (inicio != fin) {
+			palabra.clear()
+			return
+		}
+		val antes = runCatching { currentInputConnection?.getTextBeforeCursor(palabra.length, 0)?.toString() }.getOrNull()
+		if (antes != palabra.toString()) palabra.clear()
+	}
+
 	fun espacio() {
 		numero = false
 		currentInputConnection?.commitText(" ", 1)
 		sonarTecla(Sonido.TECLA_ESPACIO)
 		val eco = Ajustes(this).brailleEco
 		when {
-			eco == ECO_PALABRAS && palabra.isNotEmpty() -> anunciar(palabra.toString())
+			(eco == ECO_PALABRAS || eco == ECO_AMBOS) && palabra.isNotEmpty() -> anunciar(palabra.toString())
 			// Un número recién escrito se dice entero («dos mil veintiséis», no «2 0 2 6»)
 			eco == ECO_LETRAS && esNumero(palabra) && !ocultarContrasena() -> anunciar(palabra.toString())
 			eco != ECO_NADA -> anunciar(textos().getString(R.string.voz_espacio))
@@ -447,6 +470,7 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 
 	fun intro() {
 		val ic = currentInputConnection ?: return
+		palabra.clear()
 		sonarTecla(Sonido.TECLA_INTRO)
 		val accion = (currentInputEditorInfo?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
 		if (accion != EditorInfo.IME_ACTION_NONE && accion != EditorInfo.IME_ACTION_UNSPECIFIED) {
@@ -461,6 +485,34 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 			return
 		}
 		ic.commitText("\n", 1)
+	}
+
+	/** Un salto de línea, también en las apps de mensajes, donde Intro envía (Cronopio). */
+	fun nuevaLinea() {
+		val ic = currentInputConnection ?: return
+		palabra.clear()
+		sonarTecla(Sonido.TECLA_INTRO)
+		ic.commitText("\n", 1)
+		anunciar(nombreDe("\n"))
+	}
+
+	/** Envía siempre: la acción del campo (enviar, buscar, ir) o el botón Enviar de la app de mensajes. */
+	fun enviar() {
+		val ic = currentInputConnection ?: return
+		palabra.clear()
+		val accion = (currentInputEditorInfo?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION
+		if (accion != EditorInfo.IME_ACTION_NONE && accion != EditorInfo.IME_ACTION_UNSPECIFIED) {
+			sonarTecla(Sonido.TECLA_INTRO)
+			ic.performEditorAction(accion)
+			if (accion in ACCIONES_QUE_TERMINAN && Ajustes(this).brailleEsconderAlEnviar) esconder()
+			return
+		}
+		if (enviarConBoton()) {
+			sonarTecla(Sonido.TECLA_INTRO)
+			if (Ajustes(this).brailleEsconderAlEnviar) esconder()
+			return
+		}
+		anunciar(textos().getString(R.string.braille_sin_enviar))
 	}
 
 	/**
@@ -1013,6 +1065,7 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 		private const val ETIQUETA = "TecladoBraille"
 		const val ECO_LETRAS = "letras"
 		const val ECO_PALABRAS = "palabras"
+		const val ECO_AMBOS = "ambos"
 		const val ECO_NADA = "nada"
 		const val SONIDOS_ANDROID = "android"
 		const val SONIDOS_TIRESIAS = "tiresias"
@@ -1061,8 +1114,10 @@ class TecladoBraille : InputMethodService(), SensorEventListener, OyenteSuperfic
 			p(1, 2, 3, 6) to "v", p(2, 4, 5, 6) to "w", p(1, 3, 4, 6) to "x", p(1, 3, 4, 5, 6) to "y", p(1, 3, 5, 6) to "z",
 			p(1, 2, 3, 5, 6) to "á", p(2, 3, 4, 6) to "é", p(3, 4) to "í", p(3, 4, 6) to "ó", p(2, 3, 4, 5, 6) to "ú", p(1, 2, 5, 6) to "ü",
 			p(3) to ".", p(2) to ",", p(2, 3) to ";", p(2, 5) to ":", p(2, 6) to "?", p(2, 3, 5) to "!", p(3, 6) to "-",
-			p(1, 2, 6) to "(", p(3, 4, 5) to ")", p(2, 3, 6) to "\"", p(5) to "'", p(2, 3, 5, 6) to "=", p(3, 5) to "*",
-			p(2, 5, 6) to "/", p(4, 5, 6) to "_",
+			// La arroba es el punto 5, como en la tabla española de liblouis (Comisión Braille Española); antes el punto 5 daba
+			// un apóstrofo y no había forma de escribir una dirección de correo (keiser). El apóstrofo pasa al punto 4, como allí
+			p(1, 2, 6) to "(", p(3, 4, 5) to ")", p(2, 3, 6) to "\"", p(5) to "@", p(2, 3, 5, 6) to "=", p(3, 5) to "*",
+			p(2, 5, 6) to "/", p(4, 5, 6) to "_", p(4) to "'",
 		)
 
 		/** Tras esconder el teclado, lo que la app tarda en volver a pedirlo y esconderlo ella (sin volver a avisar). */

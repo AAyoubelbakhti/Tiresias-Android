@@ -240,7 +240,8 @@ class ServicioTiresias : AccessibilityService() {
 		lector = l
 		val ej = Ejecutor(l, vent) { suspendido -> configurar(suspendido) }
 		ejecutor = ej
-		l.alToqueAtascado = { l.manejador.post { l.decir(R.string.toque_atascado); ej.ejecutar(Accion.REINICIAR_TACTIL) } }
+		l.alEscribirEnCampo = { campo -> l.manejador.post { ej.escribirEnCampo(campo) } }
+		l.alToqueAtascado = {l.manejador.post { l.decir(R.string.toque_atascado); ej.ejecutar(Accion.REINICIAR_TACTIL) } }
 		l.alMantenerDeVerdad = { si ->
 			principal.post {
 				dobleToqueDeseado = si

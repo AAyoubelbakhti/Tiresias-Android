@@ -462,11 +462,13 @@
 	<string-array name="braille_eco_nombres">
 		<item>Cada letra</item>
 		<item>Cada palabra al terminarla</item>
+		<item>Cada letra y cada palabra</item>
 		<item>Nada</item>
 	</string-array>
 	<string-array name="braille_eco_valores" translatable="false">
 		<item>letras</item>
 		<item>palabras</item>
+		<item>ambos</item>
 		<item>nada</item>
 	</string-array>
 	<string name="aj_braille_vibrar_puntos">Vibrar al poner cada punto</string>
