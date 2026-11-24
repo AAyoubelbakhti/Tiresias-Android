@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	Más frases de lo que dice Tiresias de cada elemento (Frase en
+	nucleo/Plantillas.kt, cadena f_<nombre>), como en strings_lectura.xml.
+-->
+<resources>
+	<!-- Un campo de texto que se ve pero no se puede escribir (el de una fecha que abre un calendario) -->
+	<string name="f_solo_lectura">solo lectura</string>
+	<!-- Una celda de encabezado de una tabla -->
+	<string name="f_encabezado_columna">encabezado de columna</string>
+	<string name="f_encabezado_fila">encabezado de fila</string>
+</resources>

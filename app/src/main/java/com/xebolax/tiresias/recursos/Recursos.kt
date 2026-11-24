@@ -51,7 +51,7 @@ object Recursos {
 		"Apache-2.0 (Alpha Cephei)",
 	)
 
-	val TODOS: List<Recurso> get() = listOf(OCR, VOSK_ES) + VocesNeuronales.CATALOGO.map { it.recurso }
+	val TODOS: List<Recurso> get() = listOf(OCR, VOSK_ES) + VocesNeuronales.CATALOGO.map { it.recurso } + ModelosTraduccion.CATALOGO.map { it.recurso }
 
 	fun carpeta(c: Context, r: Recurso): File = File(c.filesDir, "recursos/${r.id}")
 

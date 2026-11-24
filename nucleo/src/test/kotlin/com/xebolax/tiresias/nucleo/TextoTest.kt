@@ -31,7 +31,8 @@ class TextoTest {
 
 	@Test
 	fun puntuacionPorNiveles() {
-		assertEquals("Hola. ¿Qué tal?", n.normalizar("Hola. ¿Qué tal?", AjustesTexto(puntuacion = NivelPuntuacion.NINGUNA)))
+		// Con «ninguna», la apertura no llega al motor; el punto y el cierre, sí (la pausa y la entonación)
+		assertEquals("Hola. Qué tal?", n.normalizar("Hola. ¿Qué tal?", AjustesTexto(puntuacion = NivelPuntuacion.NINGUNA)))
 		assertEquals("correo arroba sitio.es", n.normalizar("correo@sitio.es", AjustesTexto(puntuacion = NivelPuntuacion.ALGUNAS)))
 		assertEquals("correo arroba sitio punto es", n.normalizar("correo@sitio.es", AjustesTexto(puntuacion = NivelPuntuacion.MAYORIA)))
 	}

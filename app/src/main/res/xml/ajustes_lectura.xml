@@ -22,5 +22,6 @@
 		<ListPreference app:key="modo_emojis" app:title="@string/aj_emojis" app:entries="@array/emojis_nombres" app:entryValues="@array/emojis_valores" app:useSimpleSummaryProvider="true" />
 		<ListPreference app:key="eco_teclado" app:title="@string/aj_eco" app:entries="@array/eco_nombres" app:entryValues="@array/eco_valores" app:defaultValue="caracteres" app:useSimpleSummaryProvider="true" />
 		<ListPreference app:key="foneticas" app:title="@string/aj_foneticas" app:entries="@array/foneticas_nombres" app:entryValues="@array/foneticas_valores" app:defaultValue="no" app:useSimpleSummaryProvider="true" />
+		<SwitchPreferenceCompat app:key="simbolos_sentido" app:title="@string/aj_simbolos_sentido" app:summary="@string/aj_simbolos_sentido_res" app:defaultValue="false" />
 	</PreferenceCategory>
 </PreferenceScreen>

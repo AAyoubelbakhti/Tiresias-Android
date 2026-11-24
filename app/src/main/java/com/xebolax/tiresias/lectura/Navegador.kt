@@ -41,7 +41,7 @@ class Navegador(private val lector: Lector) {
 		/** La lista que se desplazó, la posición del elemento de partida en ella (si la app la da) y su firma. */
 		val contenedor: AccessibilityNodeInfo? = null, val filaDesde: Int? = null, val firmaFoco: String? = null,
 		/** Las firmas de lo que se veía en la lista antes de desplazarla: lo nuevo es lo que no está. */
-		val firmasAntes: Set<String> = emptySet(),
+		val firmasAntes: Map<String, Int> = emptyMap(),
 		/** Si se arrastró con dos dedos (la app no deja desplazarla por accesibilidad): el gesto tarda en acabar. */
 		val arrastre: Boolean = false,
 	) {
@@ -70,6 +70,9 @@ class Navegador(private val lector: Lector) {
 		pendienteRehacer = r
 		lector.manejador.postDelayed(r, 80)
 	}
+
+	/** Si [n] es una parada del orden guardado de [ventana] (sin rehacerlo). */
+	fun esParadaGuardada(ventana: Int, n: AccessibilityNodeInfo): Boolean = ordenes[ventana]?.contains(n) == true
 
 	fun invalidarTodo() {
 		ordenes.clear()
@@ -212,6 +215,7 @@ class Navegador(private val lector: Lector) {
 			val accion = if (adelante) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
 			val contenedor = Nodos.desplazableHacia(foco, accion, alSeguir = true)
 			if (contenedor != null && !Nodos.dentroDe(destino, contenedor)) {
+				if (mostrarSiguienteFuera(adelante, foco)) return true
 				if (desplazarParaSeguir(adelante, foco, raiz)) return true
 			}
 		}
@@ -223,14 +227,22 @@ class Navegador(private val lector: Lector) {
 			lector.manejador.postDelayed({ mover(adelante, null, intento + 1) }, ESPERA_COLOCAR_MS)
 			return true
 		}
+		// Lo siguiente ya no existe (la lista se rehízo al llegar un mensaje, la web cambió un anuncio): se tira el orden y
+		// se vuelve a buscar, en vez de decir algo que ya no está y seguir luego por su sitio viejo (SandFly, como TalkBack)
+		if (destino != null && intento < REINTENTOS_COLOCAR && !Nodos.vivo(destino)) {
+			invalidarTodo()
+			return mover(adelante, filtro, intento + 1)
+		}
 		if (destino != null) {
 			lector.enfocar(destino, if (filtro == null && foco != null && cambiaDeFila(foco, destino, adelante)) Sonido.FILA else Sonido.FOCO)
 			anticipar(destino, adelante, lista)
 			return true
 		}
 		// Al final: se desplaza la lista y se sigue por lo nuevo
+		if (mostrarSiguienteFuera(adelante, foco)) return true
 		if (desplazarParaSeguir(adelante, foco, raiz)) return true
 		if (filtro == null && salirDeBarra(adelante, raiz)) return true
+		if (filtro == null && aOtraVentana(adelante, foco, raiz)) return true
 		if (lector.ajustes.darVuelta) {
 			// Primero se para en el último (con el sonido del borde); si se vuelve a deslizar enseguida hacia el mismo lado,
 			// entonces da la vuelta. Así se sabe que se ha llegado al final antes de empezar otra vez
@@ -269,6 +281,86 @@ class Navegador(private val lector: Lector) {
 		val lista = orden(r)
 		val n = (if (adelante) lista.firstOrNull() else lista.lastOrNull()) ?: return false
 		lector.enfocar(n)
+		return true
+	}
+
+	/**
+	 * Al acabarse la ventana, a la de al lado, como TalkBack (`findTargetAcrossWindows` y
+	 * `findTargetForEditTextSuggestions`): antes solo se llegaba tocando.
+	 * - Desde un campo, hacia delante, a la lista de sugerencias que cuelga de él (Android 8+: su ventana anclada); al
+	 *   acabarla, a lo siguiente al campo; hacia atrás desde ella, al campo.
+	 * - En pantalla dividida, en imagen en imagen o con una ventana flotante de otra app, a la siguiente (o la anterior)
+	 *   que no tape a esta: así no se entra en la app que queda detrás de un diálogo.
+	 */
+	private fun aOtraVentana(adelante: Boolean, foco: AccessibilityNodeInfo?, raiz: AccessibilityNodeInfo): Boolean {
+		val ventanas = runCatching { lector.servicio.windows }.getOrNull() ?: return false
+		val propio = lector.servicio.packageName
+		val actual = ventanas.firstOrNull { it.id == raiz.windowId } ?: return false
+		if (Build.VERSION.SDK_INT >= 26) {
+			// Del campo a sus sugerencias
+			if (adelante && foco?.isEditable == true) {
+				val anclada = ventanas.firstOrNull { w -> w.id != actual.id && runCatching { w.anchor }.getOrNull() == foco }
+				anclada?.root?.let { r -> orden(r).firstOrNull()?.let { lector.enfocar(it); return true } }
+			}
+			// De las sugerencias, de vuelta al campo (o a lo que le sigue)
+			val campo = runCatching { actual.anchor }.getOrNull()
+			if (campo != null && campo.isEditable) {
+				if (!adelante) {
+					lector.enfocar(campo)
+					return true
+				}
+				val ventanaCampo = ventanas.firstOrNull { it.id == campo.windowId }?.root
+				if (ventanaCampo != null) {
+					val l = orden(ventanaCampo)
+					val i = l.indexOf(campo)
+					l.getOrNull(i + 1)?.let { lector.enfocar(it); return true }
+				}
+			}
+		}
+		// La ventana de al lado (pantalla dividida, imagen en imagen, ventana flotante): de app, de otra app, sin taparse
+		val caja = Rect().also { actual.getBoundsInScreen(it) }
+		val candidatas = ventanas.filter { w ->
+			w.id != actual.id && w.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+				runCatching { w.root?.packageName?.toString() }.getOrNull().let { it != null && it != propio } &&
+				Rect().also { w.getBoundsInScreen(it) }.let { b -> !b.isEmpty && !Rect.intersects(b, caja) || (Build.VERSION.SDK_INT >= 26 && w.isInPictureInPictureMode) }
+		}
+		if (candidatas.isEmpty()) return false
+		val secuencia = (candidatas + actual).sortedWith(compareBy({ Rect().also { r -> it.getBoundsInScreen(r) }.top }, { Rect().also { r -> it.getBoundsInScreen(r) }.left }, { it.id }))
+		val i = secuencia.indexOf(actual)
+		val otra = secuencia.getOrNull(if (adelante) i + 1 else i - 1) ?: return false
+		val r = runCatching { otra.root }.getOrNull() ?: return false
+		val l = orden(r)
+		val n = (if (adelante) l.firstOrNull() else l.lastOrNull()) ?: return false
+		lector.sonidos.tocar(Sonido.VENTANA)
+		lector.enfocar(n)
+		return true
+	}
+
+	/**
+	 * En un `ScrollView` (una página hecha a mano, «Acerca de esta app» de Play Store), todo lo de dentro está en el árbol
+	 * aunque no se vea: en vez de desplazar una página entera (y saltarse lo que quede entre medias), se pide que se vea lo
+	 * siguiente y se enfoca, como TalkBack (`revealNextOffscreenItem`). false si no es el caso.
+	 */
+	private fun mostrarSiguienteFuera(adelante: Boolean, foco: AccessibilityNodeInfo?): Boolean {
+		val f = foco ?: return false
+		val accion = if (adelante) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+		val c = Nodos.desplazableHacia(f, accion, alSeguir = true) ?: return false
+		val clase = c.className?.toString().orEmpty()
+		if (c.collectionInfo != null || !clase.endsWith("ScrollView")) return false
+		val todas = Nodos.paradasDe(c)
+		val i = todas.indexOfFirst { it == f || Nodos.dentroDe(f, it) || Nodos.dentroDe(it, f) }
+		if (i < 0) return false
+		// (algo que diga algo: no las filas vacías que separan categorías, que tampoco son paradas cuando se ven)
+		fun vale(n: AccessibilityNodeInfo) = !n.isVisibleToUser && Nodos.habla(n)
+		val siguiente = (if (adelante) todas.drop(i + 1).firstOrNull { vale(it) } else todas.take(i).lastOrNull { vale(it) }) ?: return false
+		desplazamientoPropio()
+		if (!runCatching { siguiente.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id) }.getOrDefault(false)) return false
+		invalidarTodo()
+		lector.manejador.postDelayed({
+			runCatching { siguiente.refresh() }
+			val n = Nodos.enfocable(siguiente) ?: siguiente
+			lector.enfocar(n)
+		}, ESPERA_DESPLAZAR_MS)
 		return true
 	}
 
@@ -651,12 +743,20 @@ class Navegador(private val lector: Lector) {
 		// Solo la lista en la que está el foco (la más cercana que pueda ir hacia ahí: si la lista mide lo que su
 		// contenido y quien se mueve es el contenedor que la envuelve, ese); con el foco fuera de toda lista (el
 		// título, al principio, o un botón de abajo, al final), desplazar otra lista llevaría a su mitad, no a lo siguiente
+		// Sin foco (la lista se rehízo), la lista en la que estaba el foco perdido; si no, la primera que sea grande (no la fila
+		// de filtros de arriba: TalkBack no desplaza sin saber de qué lista se viene)
+		val perdido = if (foco == null) lector.focoPerdido(raiz.windowId)?.first?.takeIf { Nodos.vivo(it) } else null
+		val altoVentana = Nodos.limites(raiz).height()
+		fun grande(l: AccessibilityNodeInfo) = altoVentana <= 0 || Nodos.limites(l).height() >= altoVentana * 4 / 10
 		val lista = (if (foco != null && Nodos.vivo(foco)) Nodos.desplazableHacia(foco, accion, alSeguir = true) ?: Nodos.desplazable(foco, alSeguir = true)
-			else Nodos.primerDesplazable(raiz, accion, alSeguir = true) ?: Nodos.primerDesplazable(raiz, alSeguir = true)) ?: return false
+			else perdido?.let { Nodos.desplazableHacia(it, accion, alSeguir = true) ?: Nodos.desplazable(it, alSeguir = true) }
+				?: Nodos.primerDesplazable(raiz, accion, alSeguir = true)?.takeIf { grande(it) }
+				?: Nodos.primerDesplazable(raiz, alSeguir = true)?.takeIf { grande(it) }) ?: return false
 		val desde = foco?.let { Nodos.limites(it) } ?: Rect()
 		// Lo de antes de desplazar, para saber después cuál es el siguiente de verdad (una página entera de golpe
 		// no debe saltarse los que aparecen arriba): su posición en la lista y lo que se veía
-		val firmasAntes = orden(raiz).filter { Nodos.dentroDe(it, lista) }.map { firma(it) }.toSet()
+		// (cuántas veces sale cada una: dos filas iguales, como dos fechas «Ayer», son dos, y la nueva no se da por vista)
+		val firmasAntes = orden(raiz).filter { Nodos.dentroDe(it, lista) }.groupingBy { firma(it) }.eachCount()
 		val nuevoAvance = { arrastre: Boolean -> Avance(adelante, desde, SystemClock.uptimeMillis(), lista, foco?.let { fila(it) }, foco?.let { firma(it) }, firmasAntes, arrastre) }
 		val tieneAccion = lista.actionList.any { it.id == accion }
 		val conAccion = tieneAccion && runCatching { lista.performAction(accion) }.getOrDefault(false)
@@ -764,7 +864,14 @@ class Navegador(private val lector: Lector) {
 			vecino
 		} else {
 			// 3. Lo primero (o lo último) que no se veía antes; 4. si no, por la posición en la pantalla
-			val nuevos = dentro.filter { firma(it) !in a.firmasAntes }
+			// (la vez k+1 de algo que antes salía k veces es nueva: dos elementos iguales ya no hacen que se salte uno)
+			val vistas = HashMap<String, Int>()
+			val nuevos = dentro.filter { n ->
+				val f = firma(n)
+				val vez = (vistas[f] ?: 0) + 1
+				vistas[f] = vez
+				vez > (a.firmasAntes[f] ?: 0)
+			}
 			(if (a.adelante) nuevos.firstOrNull() else nuevos.lastOrNull())
 				?: if (a.adelante) lista.firstOrNull { Nodos.limites(it).top > a.desde.top } ?: lista.lastOrNull()
 				else lista.lastOrNull { Nodos.limites(it).top < a.desde.top } ?: lista.firstOrNull()
@@ -892,6 +999,11 @@ class Navegador(private val lector: Lector) {
 			ControlLectura.TABLAS -> { n -> Nodos.rol(n) == Rol.TABLA || (n.collectionItemInfo != null && lector.describir.coleccionDe(n)?.collectionInfo?.columnCount ?: 0 > 1) }
 			ControlLectura.REGIONES -> { n -> Nodos.rolWeb(n) == Rol.REGION || Nodos.rolWeb(n) == Rol.NAVEGACION }
 			ControlLectura.IMAGENES -> { n -> Nodos.rol(n) == Rol.IMAGEN }
+			ControlLectura.OPCIONES -> { n -> Nodos.rol(n) == Rol.OPCION }
+			ControlLectura.DESPLEGABLES -> { n -> Nodos.rol(n) == Rol.DESPLEGABLE }
+			ControlLectura.ELEMENTOS_LISTA -> { n -> n.collectionItemInfo != null || Nodos.rolWeb(n) == Rol.ELEMENTO_LISTA }
+			// (fuera de una web no se sabe si un enlace se ha visitado: no hay ninguno)
+			ControlLectura.ENLACES_VISITADOS, ControlLectura.ENLACES_SIN_VISITAR -> { _ -> false }
 			else -> null
 		}
 	}
@@ -913,6 +1025,11 @@ class Navegador(private val lector: Lector) {
 		ControlLectura.TABLAS -> "TABLE"
 		ControlLectura.REGIONES -> "LANDMARK"
 		ControlLectura.IMAGENES -> "GRAPHIC"
+		ControlLectura.OPCIONES -> "RADIO"
+		ControlLectura.DESPLEGABLES -> "COMBOBOX"
+		ControlLectura.ELEMENTOS_LISTA -> "LIST_ITEM"
+		ControlLectura.ENLACES_VISITADOS -> "VISITED_LINK"
+		ControlLectura.ENLACES_SIN_VISITAR -> "UNVISITED_LINK"
 		else -> null
 	}
 
@@ -1096,7 +1213,7 @@ class Navegador(private val lector: Lector) {
 		val j = if (i < 0) 0 else (i + if (adelante) 1 else -1 + ventanas.size) % ventanas.size
 		val destino = ventanas[j]
 		val raiz = destino.root ?: return borde()
-		val n = Nodos.ordenLectura(raiz).firstOrNull() ?: return borde()
+		val n = orden(raiz).firstOrNull() ?: return borde()
 		lector.sonidos.tocar(Sonido.VENTANA)
 		destino.title?.toString()?.takeIf { it.isNotBlank() }?.let { lector.decir(it, Modo.INTERRUMPIR) }
 		lector.enfocar(n, null, Modo.ENCOLAR)

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- System and voice announcements: battery, calls, volume, focus indicator, animations and punctuation «none». -->
+<resources>
+	<!-- What is said -->
+	<string name="aviso_bateria_nivel">Battery %1$d percent</string>
+	<string name="aviso_bateria_nivel_cargando">Battery %1$d percent, charging</string>
+	<string name="aviso_bateria_baja">Low battery: %1$d percent</string>
+	<!-- %1$s: how long it lasted («3 minutes, 12 seconds») -->
+	<string name="llamada_terminada">Call ended: %1$s</string>
+	<string name="servicio_desactivado">Tiresias off</string>
+	<!-- The same volume changes again right away: only the percentage -->
+	<string name="volumen_cambiado_breve">%1$d percent</string>
+	<!-- %1$s: the name of the volume («Media volume») -->
+	<string name="volumen_silenciado">%1$s muted</string>
+	<string name="sonido_carga_completa">Battery full (with the charger announcements)</string>
+
+	<!-- Settings, Notifications and screen -->
+	<string name="aj_nivel_bateria">Say the battery level (while the screen is on)</string>
+	<string-array name="nivel_bateria_nombres">
+		<item>No</item>
+		<item>Every 5 percent</item>
+		<item>Every 10 percent</item>
+		<item>Every 15 minutes</item>
+		<item>Every 30 minutes</item>
+		<item>Every hour</item>
+	</string-array>
+	<string name="aj_bateria_baja">Low battery warning when the screen turns on (not charging)</string>
+	<string-array name="bateria_baja_nombres">
+		<item>No</item>
+		<item>Below 10 percent</item>
+		<item>Below 15 percent</item>
+		<item>Below 20 percent</item>
+		<item>Below 30 percent</item>
+	</string-array>
+	<string name="aj_duracion_llamada">Say how long a call lasted</string>
+	<string name="aj_duracion_llamada_res">When a phone call ends: «Call ended: 3 minutes, 12 seconds». A call you make counts from when you dial. Android 12 or later.</string>
+	<string name="aj_pantalla_multimedia">Screen announcements while something plays</string>
+	<string name="aj_pantalla_multimedia_res">«Screen off» and the unlock announcement, also while music or a video is playing</string>
+
+	<!-- Settings, Navigation: focus indicator and animations -->
+	<string name="aj_recuadro_grosor">Focus indicator thickness</string>
+	<string-array name="recuadro_grosor_nombres">
+		<item>System default</item>
+		<item>Thick</item>
+		<item>Very thick</item>
+	</string-array>
+	<string name="aj_recuadro_color">Focus indicator colour</string>
+	<string-array name="recuadro_color_nombres">
+		<item>System default</item>
+		<item>Red</item>
+		<item>Orange</item>
+		<item>Yellow</item>
+		<item>Green</item>
+		<item>Blue</item>
+		<item>Magenta</item>
+		<item>White</item>
+	</string-array>
+	<string name="aj_sin_animaciones">Turn off animations</string>
+	<string name="aj_sin_animaciones_res">While Tiresias is on, the phone does not animate windows or screen changes: new screens are read sooner. When Tiresias is turned off or this is unchecked, they come back as they were.</string>
+
+	<!-- Settings, Reading, Text -->
+	<string name="aj_simbolos_sentido">Say symbols that change the meaning</string>
+	<string name="aj_simbolos_sentido_res">With punctuation «None»: the sign of a number (−5), percent, degrees, currencies and operations between numbers (2 + 2 = 4)</string>
+</resources>

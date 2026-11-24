@@ -184,6 +184,16 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	/** El control de lectura del selector (deslizar arriba y abajo). */
 	@Volatile var control: ControlLectura = ControlLectura.PREDETERMINADO
 
+	/**
+	 * El control que había antes de que el selector se pusiera solo en Acciones al llegar a un elemento con acciones
+	 * (Cronopio, yanet: como en los otros lectores, deslizar arriba o abajo da sus acciones sin recorrer el selector).
+	 * Al salir a uno sin acciones, vuelve. Si el usuario cambia de control a mano, se olvida.
+	 */
+	@Volatile var controlAntesDeAcciones: ControlLectura? = null
+
+	/** Toques bloqueados (acción «Bloquear los toques»): ni gestos ni exploración, salvo desbloquear y la emergencia. */
+	@Volatile var toquesBloqueados = false
+
 	/** Ayuda de entrada: los gestos y las teclas se dicen en vez de hacerse. */
 	@Volatile var ayudaEntrada = false
 
@@ -386,7 +396,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		when (e.eventType) {
 			AccessibilityEvent.TYPE_VIEW_HOVER_ENTER -> {
 				pasoTardio(e)
-				alExplorar(e)
+				// Con los toques bloqueados, el dedo no mueve el foco ni dice nada
+				if (!toquesBloqueados) alExplorar(e)
 			}
 			AccessibilityEvent.TYPE_TOUCH_INTERACTION_START -> {
 				toquePropio = esGestoPropio(e)
@@ -440,8 +451,15 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			AccessibilityEvent.TYPE_WINDOWS_CHANGED -> alCambiarVentanas(e)
 			AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> alCambiarContenido(e)
 			AccessibilityEvent.TYPE_VIEW_SCROLLED -> alDesplazar(e)
-			AccessibilityEvent.TYPE_VIEW_CLICKED -> alPulsar(e)
-			AccessibilityEvent.TYPE_VIEW_SELECTED -> alSeleccionar(e)
+			// (pulsar o seleccionar algo puede cambiar lo que hay sin que la app avise de otro modo: una sección que se abre)
+			AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+				navegador.invalidar(e.windowId)
+				alPulsar(e)
+			}
+			AccessibilityEvent.TYPE_VIEW_SELECTED -> {
+				navegador.invalidar(e.windowId)
+				alSeleccionar(e)
+			}
 			AccessibilityEvent.TYPE_VIEW_FOCUSED -> alEnfocarEntrada(e)
 			AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
 				textoCambiadoEn = SystemClock.uptimeMillis()
@@ -510,7 +528,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		val focoTocado = focoAlTocar
 		focoAlTocar = null
 		// Modo senior, «un toque activa»: un toque corto sobre lo que ya se había dicho (sin pasar por nada más)
-		if (ajustes.modoSenior && ajustes.seniorToqueActiva && focoTocado != null && !tocoOtro &&
+		if (ajustes.toqueActiva && focoTocado != null && !tocoOtro &&
 			SystemClock.uptimeMillis() - inicioToque < TOQUE_CORTO_MS && Nodos.vivo(focoTocado)) {
 			// Se espera un poco: si era el primer toque de un doble toque, el doble toque manda (y lo cancela)
 			val r = Runnable {
@@ -917,7 +935,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			// Poner el dedo sobre lo que ya tiene el foco lo vuelve a decir (una vez por toque, no al pasar otra vez
 			// por él sin levantar el dedo): si no, no se oía nada y no se sabía si el foco seguía ahí (Blue-Sky).
 			// Con «un toque activa» del modo senior no: ese toque lo pulsa
-			if (primeroDelToque && !(ajustes.modoSenior && ajustes.seniorToqueActiva)) {
+			if (primeroDelToque && !(ajustes.toqueActiva)) {
 				exploracionPendiente?.let { manejador.removeCallbacks(it) }
 				apuntarPropio(destino)
 				decirElemento(destino, Modo.INTERRUMPIR, Sonido.TOQUE)
@@ -999,7 +1017,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		// La app avisa del foco del elemento que esperaba a rellenarse: ya se puede decir
 		porRellenar?.takeIf { it.nodo == n }?.let {
-			decirRellena(it)
+			decirRellena(it, e)
 			return
 		}
 		val ahora = SystemClock.uptimeMillis()
@@ -1091,18 +1109,49 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	private class Rellenar(val nodo: AccessibilityNodeInfo, val modo: Modo, val sonido: Sonido?)
 	private var porRellenar: Rellenar? = null
 
-	/** Sin nada que decir todavía: ni texto, ni descripción, ni estado, ni hijos (ni es un campo). */
+	/** Sin nada que decir todavía: ni texto, ni descripción, ni estado, ni hijos (o solo uno de adorno), ni es un campo. */
 	private fun vaciaDeMomento(n: AccessibilityNodeInfo): Boolean =
-		n.childCount == 0 && !n.isEditable && n.text.isNullOrEmpty() && n.contentDescription.isNullOrEmpty() &&
+		(n.childCount == 0 || soloHijoDeAdorno(n)) && !n.isEditable && n.text.isNullOrEmpty() && n.contentDescription.isNullOrEmpty() &&
 			(Build.VERSION.SDK_INT < 30 || n.stateDescription.isNullOrEmpty()) && (Build.VERSION.SDK_INT < 26 || n.hintText.isNullOrEmpty())
 
-	private fun decirRellena(r: Rellenar) {
+	/**
+	 * Algo que se usa con un solo hijo que no dice nada ni se usa (un icono sin nombre): como una vista vacía, puede
+	 * que solo lo nombre el evento de su foco (TalkBack `isClickableWithOnlyDecorativeChild`, SandFly 8f1ec6fbd).
+	 */
+	private fun soloHijoDeAdorno(n: AccessibilityNodeInfo): Boolean {
+		if (n.childCount != 1 || !Nodos.accionable(n)) return false
+		val h = runCatching { n.getChild(0) }.getOrNull() ?: return false
+		return h.childCount == 0 && !Nodos.tieneTexto(h) && !Nodos.accionable(h) && !h.isFocusable && !h.isCheckable && !h.isEditable
+	}
+
+	/**
+	 * Dice el elemento que esperaba a rellenarse. Si sigue sin nombre, lo que la app pone en el evento de su foco
+	 * ([e]): las vistas que se describen al llenar el evento (`onPopulateAccessibilityEvent`) y las que esconden sus
+	 * hijos del árbol, como las tarjetas de Recientes de los Infinix, Tecno e itel (TalkBack,
+	 * `getEventContentDescriptionOrEventAggregateText`). Ese texto solo se dice: ni se registra ni se guarda en disco.
+	 */
+	private fun decirRellena(r: Rellenar, e: AccessibilityEvent? = null) {
 		porRellenar = null
 		val n = r.nodo
 		if (foco != n) return
 		runCatching { n.refresh() }
+		olvidarDescrito(n)
+		val delEvento = e?.let { textoDelEvento(it) }
+		if (!delEvento.isNullOrEmpty()) {
+			val el = elemento(n)
+			// (en la caché de lo descrito, en memoria, para que se diga igual al volver a él mientras no cambie la pantalla)
+			if (el.nombre.isBlank() && el.etiquetaPersonal.isNullOrBlank()) descritos[n] = el.copy(nombre = delEvento)
+		}
 		apuntarPropio(n)
 		decirElemento(n, r.modo, r.sonido)
+	}
+
+	/** El texto que trae un evento de foco: su descripción o el texto de lo que la app ha metido en él. */
+	private fun textoDelEvento(e: AccessibilityEvent): String? {
+		val descripcion = e.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+		val texto = descripcion ?: e.text.mapNotNull { it?.toString()?.trim()?.takeIf { t -> t.isNotEmpty() } }.joinToString(" ")
+		// (como mucho 500 letras: un nombre, no una pantalla entera)
+		return texto.take(500).takeIf { it.isNotBlank() }
 	}
 
 	/** El último «Leer más» pulsado solo, para no pulsar dos veces el mismo mensaje. */
@@ -1287,6 +1336,21 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	fun edicionCaracter(c: String): String = voz.nombreCaracter(c)
 
 	/** Dice [n] con la verbosidad actual y, tras una pausa, su pista de uso. */
+	/** Con «Acciones al llegar a un elemento que las tiene»: pone el control Acciones, o devuelve el de antes. */
+	private fun ponerAccionesSolas(tieneAcciones: Boolean) {
+		if (!ajustes.accionesSolas) return
+		if (tieneAcciones) {
+			// (el predeterminado no se cambia: con «Arriba y abajo eligen las acciones» ya las da, y quien lo ha quitado quiere
+			// moverse con arriba y abajo)
+			if (control == ControlLectura.ACCIONES || control == ControlLectura.PREDETERMINADO) return
+			controlAntesDeAcciones = control
+			control = ControlLectura.ACCIONES
+		} else if (control == ControlLectura.ACCIONES) {
+			controlAntesDeAcciones?.let { control = it }
+			controlAntesDeAcciones = null
+		}
+	}
+
 	fun decirElemento(n: AccessibilityNodeInfo, modo: Modo = Modo.INTERRUMPIR, sonido: Sonido? = null) {
 		val esTecla = runCatching { n.window?.type }.getOrNull() == AccessibilityWindowInfo.TYPE_INPUT_METHOD
 		// Una tecla del teclado en pantalla de un solo carácter («u», «.», o «Capital U» como las da Gboard con las
@@ -1315,6 +1379,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			}
 		}
 		val normal = compositor.describir(elemento, verbosidad)
+		ponerAccionesSolas(elemento.tieneAcciones)
 		textoFocoDicho = normal
 		ventanaFocoDicho = n.windowId
 		// Un complemento de esta app puede cambiar lo que se dice (arreglar etiquetas, quitar ruido)
@@ -1998,14 +2063,55 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		cuandoEstable(v.id, ahora + esperaVentana()) {
 			if (foco?.windowId == v.id) return@cuandoEstable
 			val r = runCatching { servicio.windows.firstOrNull { it.id == v.id }?.root }.getOrNull() ?: return@cuandoEstable
-			navegador.orden(r).firstOrNull()?.let { enfocar(it, null, Modo.ENCOLAR) }
+			// Lo que la app pide que tenga el foco al abrirse (Android 14+, como TalkBack), o lo primero
+			navegador.orden(r).let { l -> (if (Build.VERSION.SDK_INT >= 34) l.firstOrNull { it.hasRequestInitialAccessibilityFocus() } else null) ?: l.firstOrNull() }
+				?.let { enfocar(it, null, Modo.ENCOLAR) }
+		}
+	}
+
+	/**
+	 * Los paquetes cuyos anuncios y regiones vivas no se dicen nunca: com.oplus.viewtalk, un servicio de accesibilidad
+	 * de los realme y OPPO, anuncia descripciones de imágenes («Puede que la imagen contenga…») por su cuenta (SandFly f447a87fc).
+	 */
+	private val paquetesSinAnuncios = setOf("com.oplus.viewtalk")
+
+	/**
+	 * Lo que se dice de una región viva que cambia: si no tiene texto propio, el de todo lo de dentro, también lo que
+	 * es parada por su cuenta (un botón, un enlace), como TalkBack (`shouldAppendChildNode`): en una región viva todo es
+	 * lo nuevo, no solo lo que leería su parada.
+	 */
+	private fun elementoRegionViva(n: AccessibilityNodeInfo): Elemento {
+		val el = describir.elemento(n)
+		if (n.childCount == 0 || Nodos.tieneTexto(n)) return el
+		val partes = ArrayList<String>()
+		textoDeRegion(n, partes, 0, intArrayOf(0))
+		val todo = partes.joinToString(", ")
+		return if (todo.isBlank() || todo.equals(el.nombre, ignoreCase = true)) el else el.copy(nombre = todo)
+	}
+
+	private fun textoDeRegion(n: AccessibilityNodeInfo, partes: MutableList<String>, nivel: Int, vistos: IntArray) {
+		if (nivel > 12) return
+		for (i in 0 until n.childCount) {
+			if (++vistos[0] > 200) return
+			val h = runCatching { n.getChild(i) }.getOrNull() ?: continue
+			if (!h.isVisibleToUser) continue
+			val propio = (h.contentDescription?.takeIf { it.isNotBlank() } ?: h.text?.takeIf { it.isNotBlank() })?.toString()?.trim()
+			if (propio != null) {
+				if (partes.lastOrNull() != propio) partes += propio
+				continue
+			}
+			textoDeRegion(h, partes, nivel + 1, vistos)
 		}
 	}
 
 	// CONTENT_CHANGE_TYPE_STATE_DESCRIPTION (Android 11) es una constante: antes nunca llega ese tipo, sin fallo
 	@android.annotation.SuppressLint("InlinedApi")
 	private fun alCambiarContenido(e: AccessibilityEvent) {
-		navegador.invalidar(e.windowId)
+		// Solo cambia el texto de algo que ya es parada (un reloj, un cronómetro, un contador): el orden sigue valiendo y
+		// no se rehace la ventana entera cada segundo (SandFly TraversalTreeCache), con lo que los gestos no esperan
+		val soloTexto = e.contentChangeTypes == AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT ||
+			e.contentChangeTypes == AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION
+		if (!(soloTexto && e.source?.let { navegador.esParadaGuardada(e.windowId, it) } == true)) navegador.invalidar(e.windowId)
 		cambiosPorVentana[e.windowId] = SystemClock.uptimeMillis()
 		if (cambiosPorVentana.size > 32) cambiosPorVentana.clear()
 		descritos.clear()
@@ -2016,6 +2122,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		// Región viva: se dice lo nuevo (educada, a la cola; urgente, cortando), sin repetir
 		val viva = runCatching { n.liveRegion }.getOrDefault(0)
 		if (viva != android.view.View.ACCESSIBILITY_LIVE_REGION_NONE && calladoDelSistema(e.packageName)) return
+		if (viva != android.view.View.ACCESSIBILITY_LIVE_REGION_NONE && e.packageName?.toString() in paquetesSinAnuncios) return
 		if (viva != android.view.View.ACCESSIBILITY_LIVE_REGION_NONE && (tipos and AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT != 0 || tipos == 0 || tipos and AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE != 0)) {
 			// El plazo mínimo entre cambios que pide la app (un cronómetro no habla cada décima)
 			if (!pasaPlazo(n, SystemClock.uptimeMillis())) return
@@ -2023,7 +2130,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			val delante = raiz()?.windowId
 			if (viva == android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE && delante != null && e.windowId != -1 && e.windowId != delante &&
 				e.packageName != servicio.packageName) return
-			val texto = compositor.describir(describir.elemento(n), verbosidad.copy(decirRol = false, decirPosicion = false))
+			val texto = compositor.describir(elementoRegionViva(n), verbosidad.copy(decirRol = false, decirPosicion = false))
 			if (texto.isNotBlank() && filtroVivas.pasa("viva:${e.packageName}", texto, SystemClock.uptimeMillis())) {
 				val urgente = viva == android.view.View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE
 				voz.decir(Enunciado(texto, if (urgente) Modo.INTERRUMPIR else Modo.ENCOLAR, Tipo.ANUNCIO))
@@ -2083,6 +2190,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		if (origen != null && (origen.rangeInfo != null || Nodos.rol(origen).let { it == com.xebolax.tiresias.nucleo.Rol.DESLIZADOR || it == com.xebolax.tiresias.nucleo.Rol.BARRA_PROGRESO })) return
 		navegador.invalidar(e.windowId)
 		descritos.clear()
+		decirPosicionDesplazada(e)
 		// Android guarda en caché los nodos (API 33): tras desplazar, los de esta lista ya no valen (TalkBack hace lo mismo)
 		if (Build.VERSION.SDK_INT >= 33) e.source?.let { runCatching { servicio.clearCachedSubtree(it) } }
 		val ahora = SystemClock.uptimeMillis()
@@ -2104,6 +2212,32 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			sonidos.tocar(Sonido.DESPLAZAR)
 		}
 		navegador.alDesplazar(e)
+	}
+
+	private var posicionPendiente: Runnable? = null
+
+	/**
+	 * Tras desplazar la lista o el paginador por una orden del usuario, dónde se ha quedado: «Página 2 de 5» o «Elementos
+	 * 11 a 20 de 54» (SandFly 8aa4c7b97, como TalkBack). Una vez por tanda de eventos, cuando se calma.
+	 */
+	private fun decirPosicionDesplazada(e: AccessibilityEvent) {
+		if (!ajustes.decirPosicionDesplazar) return
+		if (SystemClock.uptimeMillis() - navegador.desplazamientoPedido > 1500) return
+		val total = e.itemCount
+		val desde = e.fromIndex
+		val hasta = e.toIndex
+		if (total <= 0 || desde < 0) return
+		val origen = e.source
+		val pagina = origen != null && (Nodos.rol(origen) == com.xebolax.tiresias.nucleo.Rol.PAGINADOR || hasta == desde || hasta < 0)
+		val frase = if (pagina) textos.getString(R.string.lect_pagina_de, desde + 1, total)
+			else textos.getString(R.string.lect_elementos_de, desde + 1, (hasta + 1).coerceAtMost(total), total)
+		posicionPendiente?.let { manejador.removeCallbacks(it) }
+		val r = Runnable {
+			posicionPendiente = null
+			voz.decir(Enunciado(frase, modo = Modo.ENCOLAR, tipo = Tipo.ANUNCIO))
+		}
+		posicionPendiente = r
+		manejador.postDelayed(r, 350)
 	}
 
 	private fun alPulsar(e: AccessibilityEvent) {
@@ -2210,6 +2344,7 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	private fun alAnunciar(e: AccessibilityEvent) {
 		if (motivoCallarSinPedir() != null) return
 		if (calladoAlEncender(e.packageName)) return
+		if (e.packageName?.toString() in paquetesSinAnuncios) return
 		if (scriptsListos) e.source?.let { if (scripts.silenciado(it)) return }
 		val texto = e.text.joinToString(" ").trim()
 		if (texto.isBlank() || !filtro.pasa("anuncio:${e.packageName}", texto, SystemClock.uptimeMillis())) return

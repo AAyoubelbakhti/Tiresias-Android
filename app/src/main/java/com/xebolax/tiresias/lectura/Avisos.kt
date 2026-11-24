@@ -70,8 +70,7 @@ class Avisos(private val lector: Lector) {
 		if (esResumenSamsung(paquete, n)) return
 		val extras = n.extras
 		val titulo = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-		val texto = (extras?.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras?.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.trim()
-			?: textoEvento
+		val texto = textoDe(paquete, n, titulo, textoEvento)
 		if (titulo.isEmpty() && texto.isEmpty()) return
 		// Las llamadas de WhatsApp, Telegram, Signal...: se guardan para contestarlas o colgarlas con el gesto
 		if (esLlamada(n) && paquete !in marcadores()) llamadaInternet = LlamadaInternet(paquete, titulo, n, System.currentTimeMillis())
@@ -135,6 +134,76 @@ class Avisos(private val lector: Lector) {
 			a.put(org.json.JSONObject().put("remitente", m.person?.name?.toString().orEmpty()).put("texto", m.text?.toString().orEmpty()))
 		}
 		return a
+	}
+
+	/**
+	 * El texto de una notificación: el largo, el normal, el último mensaje de un chat, las líneas del estilo bandeja de
+	 * entrada, el del aviso (ticker) o el del evento. Si no tiene ninguno, el de su diseño propio (el Tiempo de Samsung
+	 * solo pone ahí la temperatura) y, si tampoco, el subtexto, la información o el resumen, que suelen ser el nombre
+	 * de la cuenta (SandFly 13da805a6, 4536e1ff1 y 6ff3efdae). Vacío si no tiene nada más que el título.
+	 */
+	private fun textoDe(paquete: String, n: Notification, titulo: String, textoEvento: String): String {
+		val extras = n.extras
+		return campo(extras, Notification.EXTRA_BIG_TEXT)
+			?: campo(extras, Notification.EXTRA_TEXT)
+			?: ultimoMensaje(n)
+			?: lineas(extras)
+			?: n.tickerText?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+			?: textoEvento.trim().takeIf { it.isNotEmpty() }
+			?: textoDelDiseno(paquete, n, titulo)
+			?: campo(extras, Notification.EXTRA_SUB_TEXT)
+			?: campo(extras, Notification.EXTRA_INFO_TEXT)
+			?: campo(extras, Notification.EXTRA_SUMMARY_TEXT)
+			?: ""
+	}
+
+	/** El último mensaje de una notificación de un chat (`MessagingStyle`), o null. */
+	private fun ultimoMensaje(n: Notification): String? = runCatching {
+		androidx.core.app.NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)?.messages?.lastOrNull()?.text?.toString()?.trim()
+	}.getOrNull()?.takeIf { it.isNotEmpty() }
+
+	/** Lo que se ha leído del diseño propio de cada notificación (en memoria; se infla una sola vez). */
+	private val disenos = object : LinkedHashMap<String, String>(32, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > MAXIMO_DISENOS
+	}
+
+	/**
+	 * Los textos del diseño propio de [n] (`RemoteViews`: el grande, el normal o el emergente), uno tras otro, sin el
+	 * título ni el nombre de la app, o null si no tiene. Se infla en el hilo del lector (no en el principal) y solo
+	 * cuando la notificación no trae texto: como mucho [MAXIMO_TEXTOS_DISENO] textos y [MAXIMO_VISTAS_DISENO] vistas.
+	 */
+	private fun textoDelDiseno(paquete: String, n: Notification, titulo: String): String? {
+		@Suppress("DEPRECATION")
+		val vistas = n.bigContentView ?: n.contentView ?: n.headsUpContentView ?: return null
+		val c = clave(paquete, n)
+		val leido = synchronized(disenos) { disenos[c] } ?: inflarDiseno(vistas).also { synchronized(disenos) { disenos[c] = it } }
+		val sobran = setOf(titulo.lowercase(), nombreApp(paquete).lowercase())
+		val lineas = leido.split('\n').filter { it.isNotBlank() && it.lowercase() !in sobran }.distinct()
+		return lineas.joinToString(". ").takeIf { it.isNotEmpty() }
+	}
+
+	private fun inflarDiseno(vistas: android.widget.RemoteViews): String = try {
+		val contexto = lector.servicio
+		val raiz = vistas.apply(contexto, android.widget.FrameLayout(contexto))
+		val textos = ArrayList<String>()
+		textosDe(raiz, textos, intArrayOf(0))
+		textos.joinToString("\n")
+	} catch (ex: Exception) {
+		// El diseño de otra app: recursos que faltan o vistas que no se pueden crear aquí. Se lee como sin texto
+		com.xebolax.tiresias.base.Registro.w(ETIQUETA, "No se pudo leer el diseño propio de una notificación", ex)
+		""
+	} catch (ex: OutOfMemoryError) {
+		com.xebolax.tiresias.base.Registro.w(ETIQUETA, "Sin memoria para leer el diseño propio de una notificación", ex)
+		""
+	}
+
+	private fun textosDe(v: android.view.View, textos: MutableList<String>, vistas: IntArray) {
+		if (textos.size >= MAXIMO_TEXTOS_DISENO || ++vistas[0] > MAXIMO_VISTAS_DISENO || v.visibility != android.view.View.VISIBLE) return
+		if (v is android.widget.TextView) {
+			v.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { textos += it.take(500).replace('\n', ' ') }
+			return
+		}
+		if (v is android.view.ViewGroup) for (i in 0 until v.childCount) textosDe(v.getChildAt(i), textos, vistas)
 	}
 
 	/** En el modo senior, las que se leen: llamadas, mensajes, correo, alarmas, recordatorios y citas (y las de la app de SMS). */
@@ -226,6 +295,36 @@ class Avisos(private val lector: Lector) {
 	}.getOrDefault(paquete)
 
 	companion object {
+		private const val ETIQUETA = "Avisos"
+		/** Cuántos diseños propios leídos se guardan (en memoria), y cuánto se lee de cada uno. */
+		private const val MAXIMO_DISENOS = 32
+		private const val MAXIMO_TEXTOS_DISENO = 12
+		private const val MAXIMO_VISTAS_DISENO = 200
+
+		/** Un texto de los extras de una notificación, sin espacios de más, o null si no hay. */
+		private fun campo(extras: android.os.Bundle?, clave: String): String? =
+			runCatching { extras?.getCharSequence(clave) }.getOrNull()?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+
+		/** Las líneas del estilo bandeja de entrada (`InboxStyle`: un correo por línea), o null. */
+		private fun lineas(extras: android.os.Bundle?): String? =
+			runCatching { extras?.getCharSequenceArray(Notification.EXTRA_TEXT_LINES) }.getOrNull()
+				?.mapNotNull { it?.toString()?.trim()?.takeIf { l -> l.isNotEmpty() } }?.joinToString(". ")?.takeIf { it.isNotEmpty() }
+
+		/**
+		 * Lo que identifica lo que dice una notificación (su título y su texto, o lo que lo sustituye), para no leer
+		 * otra vez una que se actualiza sin cambiar. Una que solo tiene su diseño propio, sin texto, cuenta como tal.
+		 */
+		fun firma(n: Notification?): String {
+			val e = n?.extras ?: return ""
+			val titulo = campo(e, Notification.EXTRA_TITLE).orEmpty()
+			val texto = campo(e, Notification.EXTRA_BIG_TEXT) ?: campo(e, Notification.EXTRA_TEXT) ?: lineas(e)
+				?: n.tickerText?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: campo(e, Notification.EXTRA_SUB_TEXT)
+				?: campo(e, Notification.EXTRA_INFO_TEXT) ?: campo(e, Notification.EXTRA_SUMMARY_TEXT)
+			@Suppress("DEPRECATION")
+			val diseno = if (texto == null && (n.bigContentView ?: n.contentView ?: n.headsUpContentView) != null) "diseño" else null
+			return "$titulo|${texto ?: diseno.orEmpty()}".trim('|')
+		}
+
 		/** Las apps de teléfono más comunes (además de la elegida en el móvil). */
 		private val MARCADORES = setOf("com.android.dialer", "com.google.android.dialer", "com.samsung.android.dialer", "com.samsung.android.incallui", "com.android.server.telecom", "com.android.incallui")
 

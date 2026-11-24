@@ -127,7 +127,11 @@ class LectorTest {
 		assertEquals("Descarga, 75 por ciento, barra de progreso", hacer(Accion.SIGUIENTE))
 		assertTrue(hacer(Accion.SIGUIENTE).startsWith("País"))
 		assertEquals("Correo, campo de texto", hacer(Accion.SIGUIENTE))
-		assertEquals("Contraseña, campo de contraseña", hacer(Accion.SIGUIENTE))
+		// Lo dicho en un campo de contraseña no se guarda en el historial (1.0.19): se comprueba el foco, y que no quedó
+		val antes = s.vozPruebas!!.contadorPruebas
+		s.ejecutarPrueba(Accion.SIGUIENTE)
+		assertTrue("El foco no llegó a la contraseña", esperar(3000) { s.lectorPruebas!!.foco?.takeIf { it.isPassword } } != null)
+		assertTrue("Lo de la contraseña quedó en el historial", s.vozPruebas!!.dichoDesde(antes).none { it.startsWith("Contraseña") })
 	}
 
 	@Test

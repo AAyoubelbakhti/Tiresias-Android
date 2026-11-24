@@ -227,6 +227,12 @@ class Ventanas(private val servicio: AccessibilityService) {
 				gravity = Gravity.TOP or Gravity.START
 				x = 1
 				y = -metricas.heightPixels / 2
+				// En Android 11 o posterior, una ventana se aparta de las barras del sistema de fábrica: quedaba media
+				// barra de navegación al descubierto (SandFly 1bfc697ef). Sin apartarse de nada, la tapa entera
+				if (android.os.Build.VERSION.SDK_INT >= 30) {
+					fitInsetsTypes = 0
+					fitInsetsSides = 0
+				}
 			}
 			try {
 				wm.addView(v, params)

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Offline translation (OPUS-MT): the downloadable translators and what is said while translating. -->
+<resources>
+	<!-- Downloads -->
+	<string name="recurso_traductor">Offline translator</string>
+	<string name="recurso_traductor_desc">Translates the text of the element and the last thing Tiresias said without Internet, with \"Recognise text and translate\" and \"Translate the last thing said\". It translates in one direction only: to go both ways you need both. OPUS-MT models from the University of Helsinki.</string>
+	<string name="rec_cat_traduccion">Offline translation</string>
+	<string name="rec_traduccion_explicacion">Translators that work without Internet and without sending the text to anyone. Download the one for the language you want to understand; if there is no translator for a text, Tiresias uses the artificial intelligence, if you have one set up.</string>
+	<string name="rec_traductor_nombre">%1$s to %2$s translator</string>
+
+	<!-- While translating -->
+	<string name="traduccion_traduciendo">Translating…</string>
+	<string name="traduccion_mismo_idioma">The text is already in %1$s</string>
+	<string name="traduccion_sin_nada">To translate without Internet, download a translator in Downloads, Offline translation. You can also set up an artificial intelligence in Settings.</string>
+	<string name="traduccion_falta_par">There is no %1$s to %2$s translator. Download it in Downloads, Offline translation.</string>
+	<string name="traduccion_error">The text could not be translated</string>
+</resources>

@@ -21,7 +21,7 @@
 	<string name="tut_6_titulo">Los botones de volumen</string>
 	<string name="tut_6">Si mantienes pulsadas las dos teclas de volumen, Tiresias se pone en pausa (por ejemplo, para que otra persona use el móvil). Se vuelve igual, o apagando y encendiendo la pantalla.</string>
 	<string name="tut_7_titulo">Si algo va mal</string>
-	<string name="tut_7">Toca tres veces con cuatro dedos y mantén: es el modo seguro. Quita la cortina, la pausa y los complementos, y vuelve a la voz de Tiresias. Siempre funciona.</string>
+	<string name="tut_7">Toca dos veces con cuatro dedos y mantén: es el modo seguro. Quita la cortina, la pausa y los complementos, y vuelve a la voz de Tiresias. Siempre funciona.</string>
 	<string name="tut_8_titulo">Practicar</string>
 	<string name="tut_8">Con el botón de abajo, Tiresias dice cada gesto que haces y no lo hace. Para salir, toca otra vez el botón (o pulsa Tiresias y 1 en un teclado).</string>
 

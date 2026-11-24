@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Los ajustes que solo existen desde una versión de Android: el recuadro del foco (12) y las animaciones (13). -->
+<resources>
+	<bool name="sistema_android_12">false</bool>
+	<bool name="sistema_android_13">false</bool>
+</resources>

@@ -51,6 +51,36 @@ enum class Rol {
 	ESTADO,
 }
 
+/** Lo que la regla por clase no distingue al decir el rol de un elemento. */
+object Roles {
+	/**
+	 * El rol que se dice de un elemento cuyo rol por clase es [rol] (TalkBack, `Role.java`):
+	 * - Lo que solo se pulsa (una fila de Compose con `clickable` sin `Role`, que es
+	 *   un `android.view.View` sin hijos) no es «botón» si tiene nombre: la pista
+	 *   ya dice que se pulsa. Sin nombre sí, que «sin nombre, botón» ayuda.
+	 * - Un `CompoundButton` propio es una casilla.
+	 * - Un `CheckedTextView` en una lista de una sola opción ([unaSolaOpcion]) es una opción.
+	 * - Algo con un rango válido ([conRango]) y sin clase conocida es una barra de
+	 *   progreso, o un deslizador si se le puede poner el valor ([poneValor]).
+	 *
+	 * [web] es si el rol lo ha dado la página (entonces no se toca).
+	 */
+	fun paraDecir(
+		rol: Rol, clase: String, conNombre: Boolean, web: Boolean = false, conRango: Boolean = false, poneValor: Boolean = false,
+		unaSolaOpcion: () -> Boolean = { false },
+	): Rol {
+		if (web) return rol
+		val pulsableSinClase = rol == Rol.BOTON && !clase.endsWith("Button")
+		if ((rol == Rol.NINGUNO || pulsableSinClase) && conRango) return if (poneValor) Rol.DESLIZADOR else Rol.BARRA_PROGRESO
+		return when {
+			pulsableSinClase && conNombre -> Rol.NINGUNO
+			rol == Rol.BOTON && clase.endsWith("CompoundButton") -> Rol.CASILLA
+			rol == Rol.CASILLA && clase.endsWith("CheckedTextView") && unaSolaOpcion() -> Rol.OPCION
+			else -> rol
+		}
+	}
+}
+
 /** Estado de una casilla, un interruptor o una opción (triestado en Android 16 o posterior). */
 enum class Marcado { NO_MARCABLE, MARCADO, NO_MARCADO, PARCIAL }
 
@@ -85,7 +115,51 @@ data class Posicion(
 	val encabezadoColumna: String? = null,
 	/** Si es una celda de encabezado de tabla. */
 	val esEncabezado: Boolean = false,
-)
+	/** Si esa celda de encabezado lo es de una fila (si no, de una columna). */
+	val esEncabezadoFila: Boolean = false,
+) {
+	companion object {
+		/**
+		 * La posición de un elemento en una colección de [filas] × [columnas] (las
+		 * que dice la app; -1 es «no se sabe»), con sus índices desde 0. Como la
+		 * posición en las colecciones de TalkBack (`CollectionStateFeedbackUtils`):
+		 * - Solo es tabla o cuadrícula con más de una fila y más de una columna.
+		 * - Una fila con varias columnas (pestañas, barra inferior, opciones en
+		 *   fila) es una lista horizontal: «2 de 4» con el índice de columna.
+		 * - Sin el total (-1, o el otro lado sin saber), no se da posición.
+		 *
+		 * Devuelve null si no hay nada que decir de la posición.
+		 */
+		fun enColeccion(
+			filas: Int, columnas: Int, indiceFila: Int, indiceColumna: Int,
+			encabezadoFila: String? = null, encabezadoColumna: String? = null,
+			esEncabezado: Boolean = false, esEncabezadoFila: Boolean = false,
+		): Posicion? {
+			val tabla = filas > 1 && columnas > 1
+			val (fila, columna, total) = when {
+				tabla -> Triple(indiceFila + 1, indiceColumna + 1, filas)
+				// Lista horizontal: una fila (o sin filas) y varias columnas
+				columnas > 1 && filas != -1 -> Triple(indiceColumna + 1, 0, columnas)
+				// Lista vertical: varias filas y una columna (o sin columnas)
+				filas > 1 && columnas != -1 -> Triple(indiceFila + 1, 0, filas)
+				// Un solo elemento: «1 de 1»
+				filas == 1 && columnas in 0..1 -> Triple(indiceFila + 1, 0, 1)
+				else -> Triple(0, 0, 0)
+			}
+			if (fila <= 0 && encabezadoFila.isNullOrBlank() && encabezadoColumna.isNullOrBlank() && !esEncabezado) return null
+			return Posicion(
+				fila = fila.coerceAtLeast(0),
+				columna = columna.coerceAtLeast(0),
+				totalFilas = total,
+				totalColumnas = if (tabla) columnas else 0,
+				encabezadoFila = encabezadoFila,
+				encabezadoColumna = encabezadoColumna,
+				esEncabezado = esEncabezado,
+				esEncabezadoFila = esEncabezadoFila,
+			)
+		}
+	}
+}
 
 /**
  * Lo que Tiresias sabe de un elemento de la pantalla para decirlo.
@@ -115,8 +189,17 @@ data class Elemento(
 	val nivelEncabezado: Int = 0,
 	/** Pista del campo (hintText) o texto de ayuda. */
 	val pista: String? = null,
-	/** Descripción complementaria (Android 16) o información sobre herramientas. */
+	/** Descripción complementaria (Android 16, o la de AndroidX en los extras). */
 	val complementaria: String? = null,
+	/** Información sobre herramientas (tooltip): se dice siempre que no repita el nombre. */
+	val tooltip: String? = null,
+	/**
+	 * La pista de algo que no es un campo (hintText; en una web, el `title` o la
+	 * `aria-description`): es parte de lo que se dice de él, no una pista de uso.
+	 */
+	val pistaNodo: String? = null,
+	/** Un campo de texto que se ve pero no se puede escribir (el de una fecha que abre un calendario). */
+	val soloLectura: Boolean = false,
 	val rango: Rango? = null,
 	val posicion: Posicion? = null,
 	val pulsable: Boolean = false,

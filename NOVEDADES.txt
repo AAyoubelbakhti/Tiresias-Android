@@ -1,3 +1,60 @@
+== 1.0.19
+- Recorrer bien todas las apps: Tiresias decide de otra forma qué es cada parada al deslizar, con una sola regla para deslizar, para lo que se lee y para lo que se enfoca al tocar, y sin límite de profundidad. Así:
+  - Los botones que van dentro de una tarjeta o una fila que también se pulsa («Me gusta», «Comentar», «Responder») son su propia parada y se pueden pulsar. Antes se leían dentro de la tarjeta y no se llegaba a ellos.
+  - Lo que va muy hondo dentro de una pantalla ya no se pierde: ni textos ni botones.
+  - Los grupos de «etiqueta y valor» (Correo: ana@...) se leen en una sola parada.
+  - Los mensajes de un chat que no se pulsan se leen enteros en una parada (nombre, mensaje y hora), no a trozos.
+  - Lo que se enfoca al tocar es lo mismo que se recorre deslizando, así que el siguiente deslizamiento sigue desde ahí sin saltos.
+  - Las páginas que van dentro de un marco que se pulsa a pantalla completa se recorren elemento a elemento (Play Store, «Acerca de esta app»).
+- Deslizando al final de una ventana se pasa a la de al lado: de un campo a su lista de sugerencias (y de vuelta), y entre las dos apps de la pantalla dividida o una ventana flotante.
+- Se respeta el orden de lectura que pide la app: la barra de abajo o el botón flotante ya no se leen antes que el contenido.
+- Si lo siguiente desaparece justo al deslizar (una lista que se rehace al llegar un mensaje), Tiresias lo busca otra vez en vez de decir algo que ya no está.
+- En las páginas largas de los ajustes y de muchas apps, al llegar al final de lo que se ve se trae a la vista justo lo siguiente, sin saltarse nada.
+- En las listas con elementos iguales seguidos (dos fechas «Ayer»), al desplazarse ya no se salta ninguno.
+- Las filas que tapa la barra de navegación se leen enteras.
+- Al volver con Atrás dentro de una lista (de una carpeta a la de antes), el foco vuelve a lo que habías abierto.
+- Al abrir una pantalla, el foco va a lo que la app pide que lo tenga, si lo pide.
+- Una pantalla con un reloj o un cronómetro ya no hace esperar a los gestos.
+- Al pulsar algo que abre una sección, lo nuevo se recorre al momento.
+- La reparación automática ya no esconde textos iguales seguidos que son contenido de verdad.
+- Telegram: al grabar un audio, el botón Enviar ya se puede pulsar con doble toque. En general, lo que no dice que se pulse se activa con un toque de verdad.
+- WhatsApp: en un mensaje que responde a otro, la respuesta va primero también cuando la cita se puede pulsar.
+- Los paginadores que no se desplazan por accesibilidad (las pestañas de algunas apps) se pasan con «Desplazar a la izquierda» y «a la derecha»: Tiresias pasa el dedo por ellos.
+- Al desplazar con una orden se dice dónde se queda: «Página 2 de 5» o «Elementos 11 a 20 de 54» (se quita en Ajustes, Navegación).
+- El selector se pone solo en Acciones al llegar a un elemento que tiene acciones, y vuelve al control de antes al salir. Se quita en Ajustes, Navegación.
+- Traducción sin conexión: en Ajustes, Descargas, hay traductores de inglés, francés, alemán e italiano a español, y de español, francés, alemán e italiano a inglés (unos 115 MB cada uno). Con uno descargado, «Reconocer texto y traducir», «Traducir con la IA» y «Traducir lo último dicho» traducen sin Internet y sin la IA, en menos de un segundo. Tiresias reconoce solo el idioma del texto.
+- «Voces de Tiresias» como motor de voz del móvil ya da también Eloquence, Pico y las voces neuronales descargadas, para otras apps y otros lectores. Nuevo ajuste «Voz para otras apps y otros lectores» (Ajustes, Voz): de fábrica, la misma que usa Tiresias.
+- La salida de emergencia es ahora el doble toque mantenido con cuatro dedos. La de antes (triple toque mantenido con cuatro dedos) Android no la reconoce, así que no se podía hacer con los dedos. «Pasar el siguiente gesto a la app» pasa al triple toque mantenido con dos dedos. «Cambiar de voz», que estaba ahí, se queda sin gesto de fábrica (sigue en el menú de Tiresias y se puede poner en cualquier gesto).
+- Nuevo gesto «Agitar el móvil», sin acción de fábrica, con su sensibilidad en Ajustes, Navegación. Solo se escucha el movimiento si le pones una acción.
+- Nuevo ajuste «Un toque abre lo que se acaba de decir» para todos (antes solo en el modo senior).
+- Nuevas acciones: pulsar el botón de aceptar o el de cancelar de la pantalla; compartir la imagen de lo enfocado o una captura de la pantalla; ir al primer control de lectura; tocar lo enfocado con un toque de verdad; decir dónde está lo enfocado en la pantalla; bloquear y desbloquear los toques (con el móvil en el bolsillo).
+- Nuevos controles de lectura: frases; botones de opción; desplegables; elementos de lista; encabezados de cada nivel (1 a 6); enlaces visitados y sin visitar (en las webs); desplazar; contenedores; faltas de ortografía.
+- Abrir apps por voz: entiende el nombre aunque el dictado no lo escriba igual («guasap»).
+- Lo que se dice de cada elemento:
+  - En las pestañas y las listas de lado se dice «2 de 3», no «fila 1, columna 2»; y no se dice una posición si la app no da el total.
+  - Lo que solo nombra la app al enfocarlo ya no se dice «sin nombre».
+  - Los deslizadores, interruptores y demás que tienen una etiqueta aparte la dicen.
+  - Las filas que se pulsan sin ser un botón ya no dicen «botón» de más.
+  - Las ayudas y las pistas de las apps se dicen con cualquier verbosidad.
+  - Las etiquetas que pones a un elemento ya no cambian el nombre de todas las filas de una lista.
+  - Los campos de solo lectura lo dicen y no piden escribir.
+  - «No disponible» ya no se dice en los encabezados.
+  - Webs: las celdas de encabezado de una tabla se dicen como encabezados, y se dicen bien los árboles y los menús desplegables.
+  - Las notificaciones de la persiana ya no dicen «contraído».
+- Notificaciones: las que no tienen texto (el tiempo, algunas de música y de deporte) se leen por su subtexto, su resumen o su diseño propio. Las que solo tienen eso antes no se leían nunca.
+- El historial de lo dicho ya no guarda lo de los campos de contraseña ni lo sensible.
+- Batería: nuevo «Decir el nivel de batería» cada 5 o 10 por ciento, o cada 15, 30 o 60 minutos (de fábrica, no). Aviso de batería baja al encender la pantalla (de fábrica, por debajo del 15 %). Sonido de carga completa.
+- Nuevo ajuste «Decir la duración de la llamada» al colgar (Android 12 o posterior; de fábrica, no).
+- Al apagar Tiresias, dice «Tiresias desactivado».
+- Volumen: ya no se anuncia el cambio que hace el móvil al conectar unos auriculares; si cambias el mismo volumen otra vez enseguida, solo se dice el porcentaje; se dice «silenciado»; en una llamada no se dice, y no corta la lectura continua.
+- Recuadro del foco más grueso y de color, para baja visión (Ajustes, Navegación; Android 12 o posterior).
+- Nuevo ajuste «Quitar las animaciones» mientras Tiresias está activo (Android 13 o posterior; de fábrica, no).
+- La cortina tapa también la barra de navegación.
+- Puntuación «Ninguna»: los signos ya no los lee el motor de voz. Nuevo ajuste «Decir los símbolos que cambian el sentido» (más o menos, por ciento, grados, monedas, igual, mayor y menor entre cifras).
+- Con música sonando se puede quitar el aviso de pantalla apagada y de desbloqueo (Ajustes, Notificaciones y pantalla).
+- La copia de seguridad guarda también las reparaciones, el toque directo y los temas de sonido.
+- Si la pantalla se apaga con un dedo puesto, los gestos ya no se quedan sin responder después.
+- Las voces del sistema que rechazan un idioma ya no se vuelven a probar en cada frase.
 == 1.0.18
 - WhatsApp, «Reenviar a»: al tocar un contacto se enfoca ese contacto, no la lista entera de golpe. Deslizando se recorren uno a uno.
 - WhatsApp: el «Leer más» de los mensajes largos se pulsa solo al llegar al mensaje y se dice el resto. También es su propia parada, para pulsarlo a mano si se quita la apertura automática.

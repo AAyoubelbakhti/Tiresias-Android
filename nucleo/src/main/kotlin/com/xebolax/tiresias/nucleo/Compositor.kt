@@ -43,13 +43,22 @@ class Compositor(
 				Parte.NOMBRE -> partes.addIfNotBlank(nombre)
 				Parte.VALOR -> valor(e, v)?.takeIf { !it.equals(nombre, ignoreCase = true) }?.let { partes.addIfNotBlank(it) }
 				Parte.ROL -> if (v.decirRol) rol(e, v)?.let { partes.addIfNotBlank(it) }
-				Parte.ESTADO -> if (v.decirEstado) estados(e).forEach { partes.addIfNotBlank(it) }
+				Parte.ESTADO -> if (v.decirEstado) estados(e, conFinales = false).forEach { partes.addIfNotBlank(it) }
 				Parte.POSICION -> if (v.decirPosicion) posicion(e, v)?.let { partes.addIfNotBlank(it) }
 				Parte.ERROR -> e.error?.takeIf { it.isNotBlank() }?.let { partes += textos.formato(Frase.ERROR, it) }
-				Parte.COMPLEMENTARIA -> if (v.decirComplementaria) e.complementaria?.takeIf { it.isNotBlank() && !it.equals(nombre, true) }?.let { partes += it }
+				Parte.COMPLEMENTARIA -> {
+					if (v.decirComplementaria) e.complementaria?.takeIf { it.isNotBlank() && !it.equals(nombre, true) }?.let { partes += it }
+					// El tooltip y la pista de lo que no es un campo son parte de lo que se dice de él, con cualquier
+					// verbosidad (TalkBack: `getUniqueTooltipText` y `getHintDescription`), si no repiten el nombre
+					for (extra in listOfNotNull(e.tooltip, e.pistaNodo)) {
+						if (extra.isNotBlank() && !extra.equals(nombre, true) && !extra.equals(e.complementaria, true)) partes += extra.trim()
+					}
+				}
 				Parte.PISTA -> Unit
 			}
 		}
+		// «Solo lectura» y «no disponible», siempre al final, con cualquier orden (como TalkBack)
+		finales(e).forEach { partes.addIfNotBlank(it) }
 		if (v.decirAcciones && e.tieneAcciones) partes += textos.de(Frase.TIENE_ACCIONES)
 		if (v.decirAcciones && e.enlaces > 0) partes += textos.formatoPlural(FrasePlural.ENLACES, e.enlaces, e.enlaces)
 		if (e.faltas > 0) partes += textos.formatoPlural(FrasePlural.FALTAS, e.faltas, e.faltas)
@@ -64,7 +73,7 @@ class Compositor(
 		if (e.nombre.isNotBlank()) return e.nombre
 		if (!esControl(e)) return ""
 		// Un campo con texto (o con su pista como texto, en Android 7) se reconoce por él: ni «sin nombre» ni identificador
-		if (e.editable && e.texto.isNotBlank()) return ""
+		if ((e.editable || e.soloLectura) && e.texto.isNotBlank()) return ""
 		val id = e.identificador?.let { identificadores.legible(it) }
 		return if (v.decirIdentificador && !id.isNullOrBlank()) textos.formato(Frase.SIN_NOMBRE_ID, id) else textos.de(Frase.SIN_NOMBRE)
 	}
@@ -123,8 +132,12 @@ class Compositor(
 		return if (rol == null) encabezado else rol + v.separador + encabezado
 	}
 
-	/** Los estados que se dicen, en orden. La descripción de estado de la app manda. */
-	fun estados(e: Elemento): List<String> {
+	/**
+	 * Los estados que se dicen, en orden. La descripción de estado de la app manda.
+	 * Con [conFinales], también «solo lectura» y «no disponible» (que la frase
+	 * completa dice al final, ver [finales]).
+	 */
+	fun estados(e: Elemento, conFinales: Boolean = true): List<String> {
 		val r = mutableListOf<String>()
 		val propio = e.estado?.takeIf { it.isNotBlank() }
 		if (propio != null && e.rango == null) {
@@ -148,7 +161,19 @@ class Compositor(
 		if (e.obligatorio) r += textos.de(Frase.OBLIGATORIO)
 		if (e.visitado && e.rol == Rol.ENLACE) r += textos.de(Frase.ENLACE_VISITADO)
 		if (e.escribiendo) r += textos.de(Frase.EDITANDO)
-		if (!e.activo) r += textos.de(Frase.NO_DISPONIBLE)
+		if (conFinales) r += finales(e)
+		return r
+	}
+
+	/**
+	 * Lo que va al final de la frase: «solo lectura» en un campo que no se puede
+	 * escribir y «no disponible». Un encabezado no dice «no disponible»: hay temas
+	 * que dejan desactivadas las categorías de los ajustes (TalkBack, `announceDisabled`).
+	 */
+	fun finales(e: Elemento): List<String> {
+		val r = mutableListOf<String>()
+		if (e.soloLectura && e.activo) r += textos.de(Frase.SOLO_LECTURA)
+		if (!e.activo && !e.encabezado) r += textos.de(Frase.NO_DISPONIBLE)
 		return r
 	}
 
@@ -179,8 +204,11 @@ class Compositor(
 	/** «3 de 10» en listas; «fila 2, columna 3» en tablas y cuadrículas, con sus encabezados. */
 	fun posicion(e: Elemento, v: Verbosidad = Verbosidad()): String? {
 		val p = e.posicion ?: return null
-		if (p.fila <= 0 && p.columna <= 0) return null
+		// Una celda de encabezado de una tabla: «encabezado de columna» (o de fila) antes de dónde está
+		val tipoEncabezado = if (p.esEncabezado && v.decirEncabezadosTabla) textos.de(if (p.esEncabezadoFila) Frase.ENCABEZADO_FILA else Frase.ENCABEZADO_COLUMNA) else null
+		if (p.fila <= 0 && p.columna <= 0) return tipoEncabezado
 		val encabezados = mutableListOf<String>()
+		if (tipoEncabezado != null) encabezados += tipoEncabezado
 		if (v.decirEncabezadosTabla) {
 			p.encabezadoFila?.takeIf { it.isNotBlank() && !it.equals(e.nombre, true) }?.let { encabezados += it }
 			p.encabezadoColumna?.takeIf { it.isNotBlank() && !it.equals(e.nombre, true) }?.let { encabezados += it }
@@ -212,6 +240,8 @@ class Compositor(
 		return when {
 			e.editable && !e.escribiendo -> textos.de(Frase.PISTA_EDITAR)
 			e.rol == Rol.DESLIZADOR -> textos.de(Frase.PISTA_DESLIZADOR)
+			// Lo que se pulsa: el doble toque lo pulsa (una notificación se abre), y expandir o contraer está en sus acciones
+			e.expansion != Expansion.NINGUNA && e.pulsable -> textos.de(if (gestos.alLevantar) Frase.PISTA_LEVANTAR else Frase.PISTA_PULSAR) + " " + pistaAcciones()
 			e.expansion == Expansion.CONTRAIDO -> textos.de(Frase.PISTA_EXPANDIR)
 			e.expansion == Expansion.EXPANDIDO -> textos.de(Frase.PISTA_CONTRAER)
 			// Con «activar al levantar el dedo», lo que se pulsa no necesita doble toque
@@ -241,7 +271,7 @@ class Compositor(
 	}
 
 	/** Un control (o una imagen) sin nombre ni etiqueta propia: lo que Tiresias intenta reconocer. */
-	fun sinNombre(e: Elemento) = e.etiquetaPersonal.isNullOrBlank() && e.nombre.isBlank() && esControl(e) && !(e.editable && e.texto.isNotBlank())
+	fun sinNombre(e: Elemento) = e.etiquetaPersonal.isNullOrBlank() && e.nombre.isBlank() && esControl(e) && !((e.editable || e.soloLectura) && e.texto.isNotBlank())
 
 	private fun esControl(e: Elemento) = e.pulsable || e.mantenible || e.editable || e.marcado != Marcado.NO_MARCABLE ||
 		e.rol in setOf(Rol.BOTON, Rol.BOTON_IMAGEN, Rol.CASILLA, Rol.INTERRUPTOR, Rol.OPCION, Rol.CAMPO_TEXTO, Rol.DESLIZADOR, Rol.DESPLEGABLE, Rol.ENLACE, Rol.IMAGEN, Rol.PESTANA)
@@ -259,6 +289,8 @@ class Compositor(
 		fun legible(id: String): String? {
 			val corto = id.substringAfterLast('/').substringAfterLast(':')
 			if (corto.isBlank() || corto.all { it.isDigit() }) return null
+			// Los de Android numerados (`android:id/button1`, `text2`, `icon1`) están en todas las apps y no dicen qué es
+			if (id.startsWith("android:id/") && corto.last().isDigit()) return null
 			val separado = corto
 				.replace(Regex("([a-z])([A-Z])"), "$1 $2")
 				.replace('_', ' ').replace('-', ' ').replace('.', ' ')

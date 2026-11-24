@@ -130,6 +130,108 @@ class CompositorTest {
 	}
 
 	@Test
+	fun posicionEnListasHorizontalesYSinTotal() {
+		// Pestañas o barra inferior: una fila y tres columnas → «2 de 3», no «fila 1, columna 2»
+		val pestana = Elemento(nombre = "Chats", rol = Rol.PESTANA, posicion = Posicion.enColeccion(1, 3, 0, 1))
+		assertEquals("Chats, pestaña, 2 de 3", c.describir(pestana))
+		// Sin filas (0) y cuatro columnas: también horizontal
+		assertEquals("3 de 4", c.posicion(Elemento(posicion = Posicion.enColeccion(0, 4, 0, 2))))
+		// Un ChipGroup de varias líneas (columnas -1): sin «1 de 2»
+		assertNull(c.posicion(Elemento(nombre = "Rojo", posicion = Posicion.enColeccion(2, -1, 1, 0))))
+		// Una lista de Compose con el total sin saber (filas -1): sin «5 de 1»
+		assertNull(c.posicion(Elemento(nombre = "Correo", posicion = Posicion.enColeccion(-1, 1, 4, 0))))
+		// Lista vertical normal y tabla de verdad
+		assertEquals("5 de 10", c.posicion(Elemento(posicion = Posicion.enColeccion(10, 1, 4, 0))))
+		assertEquals("fila 2, columna 3", c.posicion(Elemento(nombre = "12", posicion = Posicion.enColeccion(5, 4, 1, 2))))
+		// Una lista de un solo elemento
+		assertEquals("1 de 1", c.posicion(Elemento(posicion = Posicion.enColeccion(1, 1, 0, 0))))
+	}
+
+	@Test
+	fun celdaDeEncabezadoDeTabla() {
+		val columna = Elemento(nombre = "Precio", posicion = Posicion.enColeccion(5, 4, 0, 2, esEncabezado = true))
+		assertEquals("Precio, encabezado de columna, fila 1, columna 3", c.describir(columna))
+		val fila = Elemento(nombre = "Lunes", posicion = Posicion.enColeccion(5, 4, 1, 0, esEncabezado = true, esEncabezadoFila = true))
+		assertEquals("Lunes, encabezado de fila, fila 2, columna 1", c.describir(fila))
+	}
+
+	@Test
+	fun loQueSoloSePulsaNoEsBoton() {
+		// Una fila de Compose con clickable sin Role: android.view.View sin hijos, con nombre → sin «botón»
+		val fila = Roles.paraDecir(Rol.BOTON, "android.view.View", conNombre = true)
+		assertEquals(Rol.NINGUNO, fila)
+		assertEquals("Wifi, Conectado", c.describir(Elemento(nombre = "Wifi, Conectado", rol = fila, pulsable = true)))
+		// Sin nombre sí es botón («sin nombre, botón» ayuda); un Button de verdad, siempre
+		assertEquals(Rol.BOTON, Roles.paraDecir(Rol.BOTON, "android.view.View", conNombre = false))
+		assertEquals(Rol.BOTON, Roles.paraDecir(Rol.BOTON, "android.widget.Button", conNombre = true))
+		// Un CompoundButton propio es una casilla; un CheckedTextView de una sola opción, una opción
+		assertEquals(Rol.CASILLA, Roles.paraDecir(Rol.BOTON, "android.widget.CompoundButton", conNombre = true))
+		assertEquals(Rol.OPCION, Roles.paraDecir(Rol.CASILLA, "android.widget.CheckedTextView", conNombre = true) { true })
+		assertEquals(Rol.CASILLA, Roles.paraDecir(Rol.CASILLA, "android.widget.CheckedTextView", conNombre = true) { false })
+		// Un rango sin clase conocida: barra de progreso, o deslizador si se le pone el valor
+		assertEquals(Rol.BARRA_PROGRESO, Roles.paraDecir(Rol.NINGUNO, "android.view.View", conNombre = false, conRango = true))
+		assertEquals(Rol.DESLIZADOR, Roles.paraDecir(Rol.NINGUNO, "android.view.View", conNombre = false, conRango = true, poneValor = true))
+		// Lo que dice la web no se toca
+		assertEquals(Rol.BOTON, Roles.paraDecir(Rol.BOTON, "android.view.View", conNombre = true, web = true))
+	}
+
+	@Test
+	fun noDisponibleAlFinalYNuncaEnEncabezados() {
+		// Al final de todo, también con el estado primero
+		val casilla = Elemento(nombre = "Leído", rol = Rol.CASILLA, marcado = Marcado.NO_MARCADO, activo = false, posicion = Posicion(fila = 2, totalFilas = 5))
+		assertEquals("Leído, casilla, no marcado, 2 de 5, no disponible", c.describir(casilla))
+		assertEquals("no marcado, Leído, casilla, 2 de 5, no disponible", c.describir(casilla, Verbosidad(orden = Verbosidad.ORDEN_ESTADO_PRIMERO)))
+		// Una categoría de ajustes desactivada por el tema: sin «no disponible»
+		val categoria = Elemento(nombre = "Pantalla", encabezado = true, activo = false)
+		assertEquals("Pantalla, encabezado", c.describir(categoria))
+		// El cambio de estado (decirCambioEstado) sigue diciéndolo
+		assertEquals(listOf("no marcado", "no disponible"), c.estados(casilla))
+	}
+
+	@Test
+	fun campoDeSoloLectura() {
+		val fecha = Elemento(nombre = "Fecha", rol = Rol.CAMPO_TEXTO, texto = "24/11/2026", soloLectura = true, pulsable = true)
+		assertEquals("Fecha, 24/11/2026, campo de texto, solo lectura", c.describir(fecha))
+		// Sin la pista de escribir: se pulsa (abre el calendario)
+		assertEquals("Toca dos veces para activar.", c.pista(fecha))
+		// Sin nombre, se reconoce por lo que tiene escrito
+		assertEquals(false, c.sinNombre(fecha.copy(nombre = "")))
+	}
+
+	@Test
+	fun tooltipYPistaDelNodoConCualquierVerbosidad() {
+		val boton = Elemento(nombre = "Compartir", rol = Rol.BOTON, tooltip = "Compartir con tus contactos", pulsable = true)
+		assertEquals("Compartir, botón, Compartir con tus contactos", c.describir(boton, Verbosidad.de(NivelVerbosidad.MEDIA)))
+		// El tooltip igual que el nombre (lo normal en los botones de icono de Material) no se repite
+		assertEquals("Compartir, botón", c.describir(boton.copy(tooltip = "Compartir")))
+		// La pista de lo que no es un campo va en la frase, y la de uso no se pierde por ella
+		val enlace = Elemento(nombre = "Inicio", rol = Rol.ENLACE, pistaNodo = "Vuelve a la portada", pulsable = true)
+		assertEquals("Inicio, enlace, Vuelve a la portada", c.describir(enlace, Verbosidad.de(NivelVerbosidad.BAJA).copy(decirRol = true)))
+		assertEquals("Toca dos veces para activar.", c.pista(enlace))
+		// La complementaria sigue dependiendo de la verbosidad
+		val articulo = Elemento(nombre = "Noticia", complementaria = "Por Ana")
+		assertEquals("Noticia, Por Ana", c.describir(articulo))
+		assertEquals("Noticia", c.describir(articulo, Verbosidad.de(NivelVerbosidad.MEDIA)))
+	}
+
+	@Test
+	fun loExpandibleQueSePulsaDiceQueSePulsa() {
+		// Lo que se pulsa: el doble toque lo pulsa; expandir está en las acciones
+		val fila = Elemento(nombre = "Descargas", expansion = Expansion.CONTRAIDO, pulsable = true)
+		assertEquals("Toca dos veces para activar. Toca con tres dedos para ver sus acciones.", c.pista(fila))
+		// Lo que no se pulsa sigue diciendo que se expande
+		assertEquals("Toca dos veces para expandir.", c.pista(fila.copy(pulsable = false)))
+	}
+
+	@Test
+	fun identificadoresNumeradosDeAndroidNoSeDicen() {
+		assertNull(Compositor.legible("android:id/button1"))
+		assertNull(Compositor.legible("android:id/text2"))
+		assertEquals("summary", Compositor.legible("android:id/summary"))
+		assertEquals("button1", Compositor.legible("com.app:id/button1"))
+	}
+
+	@Test
 	fun coleccion() {
 		assertEquals("lista con 12 elementos", c.entrarEnColeccion(Rol.LISTA, 12, 1))
 		assertEquals("cuadrícula con 3 filas, 4 columnas", c.entrarEnColeccion(Rol.CUADRICULA, 3, 4))

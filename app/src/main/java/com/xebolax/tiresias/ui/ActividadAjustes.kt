@@ -101,6 +101,7 @@ class ActividadAjustes : ActividadBase(), PreferenceFragmentCompat.OnPreferenceS
 				if (bien) {
 					ServicioTiresias.instancia?.recargarAjustes()
 					ServicioTiresias.instancia?.recargarComplementos()
+					ServicioTiresias.instancia?.alRecuperarCopia()
 					avisar(getString(R.string.aj_copia_recuperada))
 					recreate()
 				} else {

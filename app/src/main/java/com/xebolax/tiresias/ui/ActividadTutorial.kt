@@ -55,7 +55,7 @@ class ActividadTutorial : ActividadBase() {
 		if (leccion == 1) {
 			// La lista de gestos asignados, para repasar
 			val mapa = Ajustes(this).mapaGestos
-			for (g in listOf(Gesto.DERECHA, Gesto.IZQUIERDA, Gesto.ARRIBA, Gesto.ABAJO, Gesto.DOBLE_TOQUE, Gesto.DOBLE_TOQUE_MANTENIDO, Gesto.ABAJO_IZQUIERDA, Gesto.ARRIBA_IZQUIERDA, Gesto.TOQUE_3, Gesto.TRIPLE_TOQUE_MANTENIDO_4)) {
+			for (g in listOf(Gesto.DERECHA, Gesto.IZQUIERDA, Gesto.ARRIBA, Gesto.ABAJO, Gesto.DOBLE_TOQUE, Gesto.DOBLE_TOQUE_MANTENIDO, Gesto.ABAJO_IZQUIERDA, Gesto.ARRIBA_IZQUIERDA, Gesto.TOQUE_3, Gesto.DOBLE_TOQUE_MANTENIDO_4)) {
 				p.parrafo(getString(R.string.tut_gesto, ActividadGestos.nombreGesto(this, g), ActividadGestos.nombreAccion(this, mapa[g])))
 			}
 		}

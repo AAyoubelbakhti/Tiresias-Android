@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Avisos del sistema y de la voz: batería, llamadas, volumen, recuadro del foco, animaciones y puntuación «ninguna». -->
+<resources>
+	<!-- Lo que se dice -->
+	<string name="aviso_bateria_nivel">Batería al %1$d por ciento</string>
+	<string name="aviso_bateria_nivel_cargando">Batería al %1$d por ciento, cargando</string>
+	<string name="aviso_bateria_baja">Batería baja: %1$d por ciento</string>
+	<!-- %1$s: lo que ha durado («3 minutos y 12 segundos») -->
+	<string name="llamada_terminada">Llamada terminada: %1$s</string>
+	<string name="servicio_desactivado">Tiresias desactivado</string>
+	<!-- Otro cambio del mismo volumen enseguida: solo el porcentaje -->
+	<string name="volumen_cambiado_breve">%1$d por ciento</string>
+	<!-- %1$s: el nombre del volumen («Volumen multimedia») -->
+	<string name="volumen_silenciado">%1$s silenciado</string>
+	<string name="sonido_carga_completa">Batería llena (con los avisos del cargador)</string>
+
+	<!-- Ajustes, Notificaciones y pantalla -->
+	<string name="aj_nivel_bateria">Decir el nivel de la batería (con la pantalla encendida)</string>
+	<string-array name="nivel_bateria_nombres">
+		<item>No</item>
+		<item>Cada 5 por ciento</item>
+		<item>Cada 10 por ciento</item>
+		<item>Cada 15 minutos</item>
+		<item>Cada 30 minutos</item>
+		<item>Cada hora</item>
+	</string-array>
+	<string-array name="nivel_bateria_valores" translatable="false">
+		<item>no</item>
+		<item>5</item>
+		<item>10</item>
+		<item>15min</item>
+		<item>30min</item>
+		<item>60min</item>
+	</string-array>
+	<string name="aj_bateria_baja">Avisar de la batería baja al encender la pantalla (sin cargar)</string>
+	<string-array name="bateria_baja_nombres">
+		<item>No</item>
+		<item>Por debajo del 10 por ciento</item>
+		<item>Por debajo del 15 por ciento</item>
+		<item>Por debajo del 20 por ciento</item>
+		<item>Por debajo del 30 por ciento</item>
+	</string-array>
+	<string-array name="bateria_baja_valores" translatable="false">
+		<item>no</item>
+		<item>10</item>
+		<item>15</item>
+		<item>20</item>
+		<item>30</item>
+	</string-array>
+	<string name="aj_duracion_llamada">Decir lo que ha durado una llamada</string>
+	<string name="aj_duracion_llamada_res">Al colgar una llamada de teléfono: «Llamada terminada: 3 minutos y 12 segundos». Una llamada que haces cuenta desde que marcas. Android 12 o posterior.</string>
+	<string name="aj_pantalla_multimedia">Avisar de la pantalla aunque suene algo</string>
+	<string name="aj_pantalla_multimedia_res">«Pantalla apagada» y lo que se dice al desbloquear, también mientras suena música o un vídeo</string>
+
+	<!-- Ajustes, Navegación: recuadro del foco y animaciones -->
+	<string name="aj_recuadro_grosor">Grosor del recuadro del foco</string>
+	<string-array name="recuadro_grosor_nombres">
+		<item>El del sistema</item>
+		<item>Grueso</item>
+		<item>Muy grueso</item>
+	</string-array>
+	<string-array name="recuadro_grosor_valores" translatable="false">
+		<item>sistema</item>
+		<item>grueso</item>
+		<item>muy_grueso</item>
+	</string-array>
+	<string name="aj_recuadro_color">Color del recuadro del foco</string>
+	<string-array name="recuadro_color_nombres">
+		<item>El del sistema</item>
+		<item>Rojo</item>
+		<item>Naranja</item>
+		<item>Amarillo</item>
+		<item>Verde</item>
+		<item>Azul</item>
+		<item>Magenta</item>
+		<item>Blanco</item>
+	</string-array>
+	<string-array name="recuadro_color_valores" translatable="false">
+		<item>sistema</item>
+		<item>rojo</item>
+		<item>naranja</item>
+		<item>amarillo</item>
+		<item>verde</item>
+		<item>azul</item>
+		<item>magenta</item>
+		<item>blanco</item>
+	</string-array>
+	<string name="aj_sin_animaciones">Quitar las animaciones</string>
+	<string name="aj_sin_animaciones_res">Mientras Tiresias está activo, el móvil no anima las ventanas ni los cambios de pantalla: lo nuevo se lee antes. Al apagar Tiresias o quitar esto, vuelven como estaban.</string>
+
+	<!-- Ajustes, Lectura, Texto -->
+	<string name="aj_simbolos_sentido">Decir los símbolos que cambian el sentido</string>
+	<string name="aj_simbolos_sentido_res">Con la puntuación «Ninguna»: el signo de un número (−5), por ciento, grados, las monedas y las operaciones entre cifras (2 + 2 = 4)</string>
+</resources>

@@ -260,11 +260,14 @@ class Voz(contexto: Context) {
 			e.alTerminar?.invoke(true)
 			return
 		}
-		if (e.tipo != Tipo.PISTA) recordar(texto)
-		escuchaRemota?.invoke(e, focoSensible && e.tipo in DEL_FOCO)
+		val sensible = focoSensible && e.tipo in DEL_FOCO
+		// Lo de una contraseña o un dato sensible (Android 14) no se guarda en el historial de lo dicho: ni «repetir»,
+		// ni «copiar lo último», ni la lista de lo dicho lo devuelven
+		if (e.tipo != Tipo.PISTA && !sensible) recordar(texto)
+		escuchaRemota?.invoke(e, sensible)
 		if (BuildConfig.PRUEBAS) {
 			// Ni en esta variante se registra lo de una contraseña o un dato sensible (Android 14)
-			val registrado = if (focoSensible && e.tipo in DEL_FOCO) "(dato sensible, ${texto.length} caracteres)" else texto
+			val registrado = if (sensible) "(dato sensible, ${texto.length} caracteres)" else texto
 			Log.i(ETIQUETA_HABLA, "[${e.tipo}${e.idioma?.let { "|" + it.toLanguageTag() }.orEmpty()}] $registrado")
 			idiomaPruebas = e.idioma
 		}

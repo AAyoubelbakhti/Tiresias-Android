@@ -110,7 +110,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.ATRAS -> when {
 			circular.abierto -> true.also { circular.cerrar() }
 			ventanas.hayAbierta -> true.also { ventanas.cerrar() }
-			else -> global(AccessibilityService.GLOBAL_ACTION_BACK)
+			else -> global(AccessibilityService.GLOBAL_ACTION_BACK).also { if (it) volverAlActivado() }
 		}
 		Accion.RECIENTES -> global(AccessibilityService.GLOBAL_ACTION_RECENTS)
 		Accion.NOTIFICACIONES -> global(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS).also { lector.momentoPersiana = SystemClock.uptimeMillis() }
@@ -133,6 +133,14 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.DELETREAR -> ultimoDicho()?.let { lector.voz.decir(Enunciado(it, deletrear = true)); true } ?: false
 		Accion.REPETIR_DESPACIO -> ultimoDicho()?.let { lector.voz.decir(Enunciado(it, preparar = false, velocidad = VELOCIDAD_DESPACIO)); true } ?: false
 		Accion.LEER_CAMPO -> leerCampo()
+		Accion.BOTON_CONFIRMAR -> botonDeDialogo(confirmar = true)
+		Accion.BOTON_CANCELAR -> botonDeDialogo(confirmar = false)
+		Accion.COMPARTIR_IMAGEN -> lector.vision.compartirImagen(soloFoco = true)
+		Accion.COMPARTIR_CAPTURA -> lector.vision.compartirImagen(soloFoco = false)
+		Accion.PRIMER_CONTROL -> primerControl()
+		Accion.TOCAR_ELEMENTO -> objetivo()?.let { lector.sonidos.tocar(Sonido.ACTIVAR); tocarEn(it, false) } ?: false
+		Accion.DECIR_POSICION -> decirPosicion()
+		Accion.BLOQUEAR_TOQUES -> bloquearToques()
 		Accion.DELETREO_FONETICO -> deletreoFonetico()
 		Accion.LEER_TITULO -> true.also { lector.decir(lector.tituloActivo().ifBlank { t.getString(R.string.lect_sin_titulo) }) }
 		Accion.ESTADO_SISTEMA -> estadoSistema()
@@ -251,7 +259,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		Accion.REINICIAR_TACTIL -> reiniciarTactil()
 		Accion.APAGAR_SCRIPTS -> true.also { lector.scripts.apagarTodos(); lector.decir(R.string.scripts_apagados) }
 		Accion.ORDENES_COMPLEMENTOS -> ordenesComplementos()
-		Accion.MODO_SEGURO -> modoSeguro()
+		Accion.MODO_SEGURO -> modoSeguro().also { lector.toquesBloqueados = false }
 		Accion.NAVEGACION_BRAILLE -> true.also { lector.superficie.abrir(com.xebolax.tiresias.braille.NavegacionWebBraille(lector) { ejecutar(it) }) }
 		Accion.BUSQUEDA_BRAILLE -> true.also { lector.superficie.abrir(com.xebolax.tiresias.braille.BusquedaBraille(lector) { ejecutar(it) }) }
 		Accion.TRADUCIR_ULTIMO -> lector.vision.traducirDicho(ultimoDicho())
@@ -323,6 +331,12 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		// Las apps con «clic directo»: siempre un toque de verdad (TikTok y otras que ignoran el clic de accesibilidad)
 		if (f.packageName?.toString()?.let { it in lector.ajustes.appsClicDirecto } == true) return tocarEn(f, false)
 		val antes = SystemClock.uptimeMillis()
+		// Algo que no dice que se pulse (ni pulsable ni con la acción de pulsar) no recibe el clic de accesibilidad: hay
+		// apps que lo dan por hecho sin hacer nada. El botón «Enviar» que sale al grabar un audio en Telegram es una vista
+		// virtual sin la acción de pulsar cuyo clic devuelve que sí y no envía; solo lo envía un dedo en la pantalla, que
+		// es lo que hacen los demás lectores cuando el elemento no se pulsa (yanet)
+		val admiteClic = f.isClickable || f.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+		if (!admiteClic && Nodos.rolChrome(f) == null && !Nodos.textoDentroAparte && tocarEn(f, false)) return true
 		val ok = runCatching { f.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)
 		// Un texto que no se pulsa, dentro de algo que sí (el texto de dentro por separado, el párrafo de una respuesta de
 		// una web que se pulsa entera): el clic al antepasado que lo admite (SandFly FocusActor.itemOfTextInside)
@@ -331,6 +345,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		}
 		// Si la app no atiende el clic de accesibilidad (Telegram en HyperOS: Backtalk 266), un toque de verdad
 		if (!ok) return tocarEn(f, false)
+		recordarActivado(f)
 		if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d(ETIQUETA, "Clic en ${SystemClock.uptimeMillis() - antes} ms")
 		return true
 	}
@@ -422,6 +437,9 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		if (lista != null) {
 			for (a in acciones(lista)) if (runCatching { lista.performAction(a) }.getOrDefault(false)) return true
 		}
+		// Un paginador que no da acciones de desplazar (las pestañas de carpetas de Solid Explorer): se le pasa el dedo de
+		// lado, como haría una persona (SandFly 201fc30bf)
+		paginadorSinAcciones()?.let { pag -> if (deslizarPaginador(pag, derecha)) return true }
 		lector.sonidos.tocar(Sonido.BORDE)
 		return false
 	}
@@ -588,6 +606,7 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		val lista = lector.ajustes.controlesLectura.filter { enWeb || !soloWeb || !it.soloWeb }.ifEmpty { listOf(ControlLectura.PREDETERMINADO) }
 		val i = lista.indexOf(lector.control).let { if (it < 0) (if (adelante) -1 else 0) else it }
 		lector.control = lista[(i + if (adelante) 1 else lista.size - 1) % lista.size]
+		lector.controlAntesDeAcciones = null
 		accionElegida = -1
 		edicionElegida = -1
 		portapapelesElegido = -1
@@ -622,7 +641,32 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 		ControlLectura.SALIDA -> cambiarSalida(!abajo)
 		// En las apps, los enlaces de dentro del texto uno a uno (el doble toque pulsa el dicho) y luego el elemento siguiente
 		ControlLectura.ENLACES -> enlaceDentro(abajo) ?: nav.porTipo(c, abajo)
+		ControlLectura.FRASES -> nav.porTexto(Granularidad.FRASE, abajo, modoSeleccion)
+		ControlLectura.ENCABEZADOS_1, ControlLectura.ENCABEZADOS_2, ControlLectura.ENCABEZADOS_3, ControlLectura.ENCABEZADOS_4,
+		ControlLectura.ENCABEZADOS_5, ControlLectura.ENCABEZADOS_6 -> nav.porTipo(ControlLectura.ENCABEZADOS, abajo, c.nivelEncabezado)
+		ControlLectura.DESPLAZAR -> hacer(if (abajo) Accion.DESPLAZAR_ADELANTE else Accion.DESPLAZAR_ATRAS)
+		ControlLectura.CONTENEDORES -> nav.contenedor(abajo)
+		ControlLectura.FALTAS -> faltaSiguiente(abajo)
 		else -> nav.porTipo(c, abajo)
+	}
+
+	/** La falta de ortografía siguiente (o anterior) del campo enfocado, que se dice con sus sugerencias. */
+	private var faltaElegida = -1
+	private var faltaEnFoco = -1
+
+	private fun faltaSiguiente(abajo: Boolean): Boolean {
+		val f = objetivo() ?: return false
+		val faltas = Nodos.faltas(f)
+		if (faltas.isEmpty()) {
+			lector.sonidos.tocar(Sonido.BORDE)
+			lector.decir(R.string.sin_faltas)
+			return false
+		}
+		if (faltaEnFoco != lector.cambiosFoco) faltaElegida = -1
+		faltaEnFoco = lector.cambiosFoco
+		val n = faltas.size
+		faltaElegida = if (faltaElegida < 0) (if (abajo) 0 else n - 1) else (faltaElegida + if (abajo) 1 else n - 1) % n
+		return irAFalta(f, faltas[faltaElegida])
 	}
 
 	/**
@@ -2489,6 +2533,177 @@ class Ejecutor(private val lector: Lector, private val ventanas: Ventanas, priva
 	fun nombreAccion(a: Accion): String {
 		val id = t.resources.getIdentifier("accion_" + a.name.lowercase(), "string", t.packageName)
 		return if (id != 0) t.getString(id) else a.name.lowercase().replace('_', ' ')
+	}
+
+	// --- 1.0.19: acciones nuevas ---------------------------------------------------------------
+
+	/**
+	 * Pulsa el botón de aceptar (o el de cancelar) de lo que hay delante (SandFly e32b290ad): primero los de los diálogos de
+	 * Android (`button1` y `button2`); si no, el botón que se llame como uno de la lista (Aceptar, Guardar, Enviar...; o
+	 * Cancelar, Cerrar...), el más cercano al foco o, sin foco, el más bajo.
+	 */
+	private fun botonDeDialogo(confirmar: Boolean): Boolean {
+		val raiz = lector.raiz() ?: return false
+		val id = if (confirmar) "android:id/button1" else "android:id/button2"
+		var boton = runCatching { raiz.findAccessibilityNodeInfosByViewId(id) }.getOrNull()?.firstOrNull { it.isVisibleToUser && it.isEnabled }
+		if (boton == null) {
+			val palabras = t.getString(if (confirmar) R.string.botones_confirmar else R.string.botones_cancelar)
+				.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+			val coinciden = nav.orden(raiz).filter { n ->
+				Nodos.accionable(n) && n.isEnabled && !n.isEditable &&
+					(n.contentDescription ?: n.text ?: Nodos.textoHijos(n, 60)).toString().trim().trimEnd('.', '!', '…').lowercase() in palabras
+			}
+			val foco = lector.foco?.let { Nodos.limites(it) }
+			boton = if (foco != null) coinciden.minByOrNull { n ->
+				val r = Nodos.limites(n)
+				val dx = (r.centerX() - foco.centerX()).toLong()
+				val dy = (r.centerY() - foco.centerY()).toLong()
+				dx * dx + dy * dy
+			} else coinciden.maxByOrNull { Nodos.limites(it).bottom }
+		}
+		val b = boton ?: run {
+			lector.sonidos.tocar(Sonido.ERROR)
+			lector.decir(if (confirmar) R.string.sin_boton_confirmar else R.string.sin_boton_cancelar)
+			return false
+		}
+		lector.sonidos.tocar(Sonido.ACTIVAR)
+		val nombre = (b.contentDescription ?: b.text ?: Nodos.textoHijos(b, 60)).toString().trim()
+		val ok = runCatching { b.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false) || tocarEn(b, false)
+		if (ok && nombre.isNotEmpty()) lector.decir(nombre)
+		return ok
+	}
+
+	/** Pone el primer control de lectura de la lista elegida (SandFly 08342168e). */
+	private fun primerControl(): Boolean {
+		val enWeb = lector.foco?.let { nav.enWeb(it) } == true
+		val soloWeb = lector.ajustes.controlesSoloWeb
+		val primero = lector.ajustes.controlesLectura.firstOrNull { enWeb || !soloWeb || !it.soloWeb } ?: ControlLectura.PREDETERMINADO
+		lector.control = primero
+		lector.controlAntesDeAcciones = null
+		accionElegida = -1
+		edicionElegida = -1
+		portapapelesElegido = -1
+		lector.sonidos.tocar(Sonido.SELECTOR)
+		lector.decir(nav.nombreControl(primero))
+		return true
+	}
+
+	/** Dónde está lo enfocado en la pantalla: en qué tercio (arriba, en medio, abajo; izquierda, centro, derecha) y su tamaño. */
+	private fun decirPosicion(): Boolean {
+		val f = objetivo() ?: return false
+		val r = Nodos.limites(f)
+		val m = servicio.resources.displayMetrics
+		if (r.isEmpty || m.widthPixels <= 0 || m.heightPixels <= 0) return false
+		val vertical = when {
+			r.centerY() < m.heightPixels / 3 -> R.string.posicion_arriba
+			r.centerY() > m.heightPixels * 2 / 3 -> R.string.posicion_abajo
+			else -> R.string.posicion_en_medio
+		}
+		val horizontal = when {
+			r.centerX() < m.widthPixels / 3 -> R.string.posicion_izquierda
+			r.centerX() > m.widthPixels * 2 / 3 -> R.string.posicion_derecha
+			else -> R.string.posicion_centro
+		}
+		val ancho = (r.width() * 100 / m.widthPixels).coerceIn(0, 100)
+		val alto = (r.height() * 100 / m.heightPixels).coerceIn(0, 100)
+		lector.decir(t.getString(R.string.posicion_elemento, t.getString(vertical), t.getString(horizontal), ancho, alto))
+		return true
+	}
+
+	/**
+	 * Bloquea los toques (SandFly 44978f275): con el móvil en el bolsillo o al limpiar la pantalla, ni los gestos ni el dedo
+	 * hacen nada hasta que se repite esta orden (con un gesto o una tecla) o se hace la salida de emergencia.
+	 */
+	private fun bloquearToques(): Boolean {
+		lector.toquesBloqueados = !lector.toquesBloqueados
+		lector.sonidos.tocar(if (lector.toquesBloqueados) Sonido.BORDE else Sonido.ACTIVAR)
+		lector.decir(if (lector.toquesBloqueados) R.string.toques_bloqueados else R.string.toques_desbloqueados)
+		return true
+	}
+
+	/** Lo último activado dentro de una lista, para volver a ello tras Atrás si la lista cambia sin cambiar de ventana. */
+	private class Activado(val ventana: Int, val firma: String)
+	private val activados = ArrayDeque<Activado>()
+
+	private fun firmaActivado(n: AccessibilityNodeInfo): String = "${n.className}|${n.viewIdResourceName}|${n.contentDescription ?: n.text ?: Nodos.textoHijos(n, 120)}"
+
+	/** Apunta [n] si está dentro de una lista (SandFly cc103e005): los 16 últimos. */
+	private fun recordarActivado(n: AccessibilityNodeInfo) {
+		if (Nodos.desplazable(n) == null) return
+		activados.addLast(Activado(n.windowId, firmaActivado(n)))
+		while (activados.size > 16) activados.removeFirst()
+	}
+
+	@Volatile private var atrasEn = 0L
+
+	/**
+	 * Tras Atrás dentro de la misma ventana (volver de una carpeta a la de antes en un explorador de archivos), el foco vuelve
+	 * a lo que se había abierto, como en TalkBack, en vez de quedarse en lo primero de la lista. Dos Atrás en menos de
+	 * 300 ms cuentan como uno.
+	 */
+	private fun volverAlActivado() {
+		val ahora = SystemClock.uptimeMillis()
+		if (ahora - atrasEn < 300) return
+		atrasEn = ahora
+		val ultimo = activados.removeLastOrNull() ?: return
+		for (espera in longArrayOf(450, 1000)) lector.manejador.postDelayed({
+			if (atrasEn != ahora || lector.momentoUsuario > ahora) return@postDelayed
+			val raiz = lector.raiz() ?: return@postDelayed
+			if (raiz.windowId != ultimo.ventana) return@postDelayed
+			nav.invalidarTodo()
+			val n = nav.orden(raiz).take(2000).firstOrNull { firmaActivado(it) == ultimo.firma } ?: return@postDelayed
+			if (lector.foco == n) return@postDelayed
+			atrasEn = 0L
+			lector.enfocar(n)
+		}, espera)
+	}
+
+	/**
+	 * El paginador en el que está el foco aunque no se desplace por accesibilidad: un antepasado con una página que se ve
+	 * y ocupa casi todo su ancho y otra del mismo ancho que no se ve.
+	 */
+	private fun paginadorSinAcciones(): AccessibilityNodeInfo? {
+		var p: AccessibilityNodeInfo? = lector.foco
+		var nivel = 0
+		while (p != null && nivel < 15) {
+			val ancho = Nodos.limites(p).width()
+			if (ancho > 0 && p.childCount >= 2) {
+				var vista = false
+				var oculta = false
+				for (i in 0 until p.childCount) {
+					val h = runCatching { p.getChild(i) }.getOrNull() ?: continue
+					val w = Nodos.limites(h).width()
+					if (h.isVisibleToUser && w >= ancho * 9 / 10) vista = true
+					else if (!h.isVisibleToUser) oculta = true
+				}
+				if (vista && oculta) return p
+			}
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return null
+	}
+
+	/** Un dedo de un lado a otro del paginador (del 75 % al 25 % de su ancho para la página siguiente), en 250 ms. */
+	private fun deslizarPaginador(pag: AccessibilityNodeInfo, derecha: Boolean): Boolean {
+		val r = Nodos.visibleEnVentana(pag)
+		if (r.isEmpty || r.width() < 40) return false
+		val margen = r.width() * 8 / 100
+		val izquierda = (r.left + maxOf(margen, r.width() / 4)).toFloat()
+		val derechaX = (r.right - maxOf(margen, r.width() / 4)).toFloat()
+		val y = r.exactCenterY()
+		val camino = Path().apply {
+			if (derecha) {
+				moveTo(derechaX, y)
+				lineTo(izquierda, y)
+			} else {
+				moveTo(izquierda, y)
+				lineTo(derechaX, y)
+			}
+		}
+		val gesto = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(camino, 0, 250)).build()
+		nav.desplazamientoPedido = SystemClock.uptimeMillis()
+		return lector.mandarGesto(gesto)
 	}
 
 	companion object {

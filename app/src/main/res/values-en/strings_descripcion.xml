@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	More phrases of what Tiresias says about each item (Frase in
+	nucleo/Plantillas.kt, string f_<name>), as in strings_lectura.xml.
+-->
+<resources>
+	<!-- A text field that is shown but can't be typed in (a date field that opens a calendar) -->
+	<string name="f_solo_lectura">read only</string>
+	<!-- A header cell of a table -->
+	<string name="f_encabezado_columna">column header</string>
+	<string name="f_encabezado_fila">row header</string>
+</resources>

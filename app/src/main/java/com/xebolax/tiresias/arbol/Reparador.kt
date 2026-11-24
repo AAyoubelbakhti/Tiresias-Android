@@ -46,6 +46,16 @@ class Reparador(contexto: Context) {
 		cargar()
 	}
 
+	/** Vuelve a leer las reparaciones del archivo (lo ha cambiado una copia de seguridad recuperada). */
+	@Synchronized
+	fun recargar() {
+		hechas.clear()
+		rechazadas.clear()
+		hay = false
+		cargadas = false
+		cargar()
+	}
+
 	@Synchronized
 	private fun cargar() {
 		if (cargadas) return

@@ -55,7 +55,7 @@ Un fallo es una excepción sin atender o pasarse de tiempo. Cada llamada que sal
 
 ### La salida de emergencia
 
-- El modo seguro (de fábrica, triple toque mantenido con cuatro dedos, un gesto que nada puede quitar) apaga todos los complementos al momento, además de quitar la cortina, volver a eSpeak y otras cosas.
+- El modo seguro (de fábrica, doble toque mantenido con cuatro dedos, un gesto que nada puede quitar) apaga todos los complementos al momento, además de quitar la cortina, volver a eSpeak y otras cosas.
 - La acción «Apagar los complementos» hace solo eso, y se puede asignar a un gesto o una tecla.
 - En la pantalla Complementos está «Apagar todos los complementos».
 

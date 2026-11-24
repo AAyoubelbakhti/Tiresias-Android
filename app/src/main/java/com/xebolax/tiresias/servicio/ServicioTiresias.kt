@@ -24,6 +24,7 @@ import com.xebolax.tiresias.lectura.Lector
 import com.xebolax.tiresias.nucleo.Accion
 import com.xebolax.tiresias.nucleo.Diccionario
 import com.xebolax.tiresias.nucleo.Gesto
+import com.xebolax.tiresias.nucleo.MapaGestos
 import com.xebolax.tiresias.scripts.Scripts
 import com.xebolax.tiresias.teclado.Teclado
 import com.xebolax.tiresias.ventanas.Ventanas
@@ -60,8 +61,30 @@ class ServicioTiresias : AccessibilityService() {
 	private var proximidad: CallarConProximidad? = null
 	private var avisoVolumen: AvisoVolumen? = null
 	private var paqueteActual: String? = null
+
+	/** El gesto de agitar: el acelerómetro solo se escucha con la pantalla encendida y con una acción en ese gesto. */
+	private var agitar: com.xebolax.tiresias.gestos.Agitar? = null
+
+	/** Empieza o deja de escuchar el gesto de agitar según la pantalla y lo que tenga asignado (general o de la app). */
+	private fun revisarAgitar() {
+		val l = lector ?: return
+		val conAccion = runCatching { l.perfiles.mapaGestos(l.ajustes.mapaGestos, paqueteActual)[Gesto.AGITAR] != Accion.NINGUNA }.getOrDefault(false)
+		val encendida = (getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
+		if (conAccion && encendida) {
+			val a = agitar ?: com.xebolax.tiresias.gestos.Agitar(this) { alGestoTiresias(Gesto.AGITAR) }.also { agitar = it }
+			a.umbral = when (l.ajustes.agitarSensibilidad) {
+				"baja" -> com.xebolax.tiresias.gestos.Agitar.SENSIBILIDAD_BAJA
+				"alta" -> com.xebolax.tiresias.gestos.Agitar.SENSIBILIDAD_ALTA
+				else -> com.xebolax.tiresias.gestos.Agitar.SENSIBILIDAD_MEDIA
+			}
+			a.escuchar(true)
+		} else agitar?.escuchar(false)
+	}
 	private var ordenesPrueba: OrdenesPrueba? = null
 	private var vigilante: Vigilante? = null
+	private var avisosBateria: AvisosBateria? = null
+	private var duracionLlamada: DuracionLlamada? = null
+	private var apariencia: AparienciaSistema? = null
 
 	private val reanudar = object : BroadcastReceiver() {
 		override fun onReceive(c: Context?, i: Intent?) {
@@ -85,6 +108,8 @@ class ServicioTiresias : AccessibilityService() {
 		private var llenaDicha = false
 		override fun onReceive(c: Context?, i: Intent?) {
 			val l = lector ?: return
+			// El nivel cada cierto tiempo o cada tanto por ciento y la batería baja no dependen de los avisos del cargador
+			if (i?.action == Intent.ACTION_BATTERY_CHANGED) avisosBateria?.alCambiar(i, isInitialStickyBroadcast)
 			if (!l.ajustes.avisosCargador) return
 			val nivel = (i ?: registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))?.let { b ->
 				val n = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
@@ -114,8 +139,11 @@ class ServicioTiresias : AccessibilityService() {
 				}
 				else -> return
 			}
+			val llena = i.action == Intent.ACTION_BATTERY_CHANGED
 			l.manejador.post {
 				if (l.motivoCallarSinPedir() != null) return@post
+				// Con «batería llena», su sonido (SandFly 4356e3f4b)
+				if (llena) l.sonidos.tocar(Sonido.CARGA_COMPLETA)
 				l.decir(texto, com.xebolax.tiresias.voz.Modo.ENCOLAR)
 			}
 		}
@@ -124,26 +152,13 @@ class ServicioTiresias : AccessibilityService() {
 	private val pantalla = object : BroadcastReceiver() {
 		override fun onReceive(c: Context?, i: Intent?) {
 			when (i?.action) {
-				Intent.ACTION_SCREEN_ON -> lector?.manejador?.post {
-					com.xebolax.tiresias.remoto.Asistencia.alPantalla(true)
-					com.xebolax.tiresias.ui.ControlPc.alPantalla(this@ServicioTiresias, true)
-					lector?.let { PuenteEscritorio.mirarRol(it) }
-					if (ejecutor?.suspendido == true) ejecutor?.suspender(false)
-					// Con el móvil bloqueado, unos segundos sin lo que SystemUI dice solo (Backtalk 312), o sin nada si la
-					// pantalla la ha encendido una notificación que no se lee
-					lector?.let { l -> if (l.bloqueado()) l.alEncenderBloqueado() }
-					// Lo que el usuario quiere oír al encender la pantalla (Ajustes, Notificaciones y pantalla)
-					when (lector?.ajustes?.alEncender) {
-						"hora" -> lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
-						"estado" -> ejecutor?.ejecutar(Accion.ESTADO_SISTEMA)
-						"avisos" -> {
-							lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
-							ejecutor?.ejecutar(Accion.RESUMEN_AVISOS)
-						}
-					}
+				Intent.ACTION_SCREEN_ON -> {
+					avisosBateria?.alPantalla(true)
+					revisarAgitar()
+					lector?.manejador?.post { alEncenderPantalla() }
 				}
-				// Al desbloquear (Backtalk 31 y 149)
-				Intent.ACTION_USER_PRESENT -> lector?.manejador?.post {
+				// Al desbloquear (Backtalk 31 y 149); mientras suena música o un vídeo, si así se quiere, nada (SandFly f2b2797ac)
+				Intent.ACTION_USER_PRESENT -> if (lector?.ajustes?.avisosPantallaConMultimedia != false || !suenaMultimedia()) lector?.manejador?.post {
 					when (lector?.ajustes?.alDesbloquear) {
 						"desbloqueado" -> lector?.decir(R.string.desbloqueado, Modo.ENCOLAR)
 						"hora" -> lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
@@ -164,28 +179,80 @@ class ServicioTiresias : AccessibilityService() {
 					}
 				}
 				Intent.ACTION_SCREEN_OFF -> {
-					com.xebolax.tiresias.remoto.Asistencia.alPantalla(false)
-					com.xebolax.tiresias.ui.ControlPc.alPantalla(this@ServicioTiresias, false)
-					lector?.continua?.parar()
-					teclado?.olvidarPulsadas()
-					lector?.superficie?.let { if (it.modo?.cerrarAlCambiarDeApp == true) it.cerrar() }
-					// Lo copiado por Tiresias solo vive mientras se usa el móvil
-					lector?.edicion?.olvidarCopiado()
-					lector?.manejador?.post { lector?.salirVirtual(false) }
-					lector?.let { l -> if (l.visionListo) l.vision.pararDescripcionContinua() }
-					voz?.callar()
-					lector?.let { l ->
-						if (l.ajustes.alApagar) {
-							// Un momento despierto, para que «pantalla apagada» no se corte al dormirse el móvil (Backtalk 13)
-							mantenerDespierto(3000)
-							l.sonidos.tocar(Sonido.APAGADO)
-							l.decir(R.string.pantalla_apagada, modo = Modo.ENCOLAR)
-						}
-					}
+					agitar?.escuchar(false)
+					alApagarPantalla()
 				}
 			}
 		}
 	}
+
+	/** Lo de encender la pantalla, en el hilo del lector. */
+	private fun alEncenderPantalla() {
+		com.xebolax.tiresias.remoto.Asistencia.alPantalla(true)
+		com.xebolax.tiresias.ui.ControlPc.alPantalla(this@ServicioTiresias, true)
+		lector?.let { PuenteEscritorio.mirarRol(it) }
+		if (ejecutor?.suspendido == true) ejecutor?.suspender(false)
+		// Con el móvil bloqueado, unos segundos sin lo que SystemUI dice solo (Backtalk 312), o sin nada si la
+		// pantalla la ha encendido una notificación que no se lee
+		lector?.let { l -> if (l.bloqueado()) l.alEncenderBloqueado() }
+		// Lo que el usuario quiere oír al encender la pantalla (Ajustes, Notificaciones y pantalla)
+		when (lector?.ajustes?.alEncender) {
+			"hora" -> lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
+			"estado" -> ejecutor?.ejecutar(Accion.ESTADO_SISTEMA)
+			"avisos" -> {
+				lector?.decir((lector?.ajustes?.horaAhora() ?: ""), Modo.ENCOLAR)
+				ejecutor?.ejecutar(Accion.RESUMEN_AVISOS)
+			}
+		}
+	}
+
+	/** Lo de apagar la pantalla, en el hilo principal (el receptor). */
+	private fun alApagarPantalla() {
+		// Con un dedo puesto, Android corta el toque sin decírselo a la exploración táctil, que se queda con dedos que ya
+		// no están y deja de reconocer los gestos: se vuelve a poner, sin decir nada (SandFly 8cd4c366a)
+		if (lector?.dedoEnPantalla == true) reponerExploracion()
+		avisosBateria?.alPantalla(false)
+		com.xebolax.tiresias.remoto.Asistencia.alPantalla(false)
+		com.xebolax.tiresias.ui.ControlPc.alPantalla(this@ServicioTiresias, false)
+		lector?.continua?.parar()
+		teclado?.olvidarPulsadas()
+		lector?.superficie?.let { if (it.modo?.cerrarAlCambiarDeApp == true) it.cerrar() }
+		// Lo copiado por Tiresias solo vive mientras se usa el móvil
+		lector?.edicion?.olvidarCopiado()
+		lector?.manejador?.post { lector?.salirVirtual(false) }
+		lector?.let { l -> if (l.visionListo) l.vision.pararDescripcionContinua() }
+		voz?.callar()
+		val conMultimedia = lector?.ajustes?.avisosPantallaConMultimedia == false && suenaMultimedia()
+		lector?.let { l ->
+			// Mientras suena música o un vídeo, si así se quiere, nada (SandFly f2b2797ac)
+			if (l.ajustes.alApagar && !conMultimedia) {
+				// Un momento despierto, para que «pantalla apagada» no se corte al dormirse el móvil (Backtalk 13)
+				mantenerDespierto(3000)
+				l.sonidos.tocar(Sonido.APAGADO)
+				l.decir(R.string.pantalla_apagada, modo = Modo.ENCOLAR)
+			}
+		}
+	}
+
+	/**
+	 * Si suena música o un vídeo (otra app). Con la voz por el volumen multimedia, lo que diga Tiresias en ese momento
+	 * también cuenta: Android no dice de quién es lo que suena.
+	 */
+	private fun suenaMultimedia(): Boolean =
+		runCatching { getSystemService(android.media.AudioManager::class.java)?.isMusicActive == true }
+			.onFailure { Registro.w(ETIQUETA, "No se pudo saber si suena algo", it) }
+			.getOrDefault(false)
+
+	/** Quita y vuelve a poner la exploración táctil, callado (como «Reiniciar la exploración táctil», sin decirlo). */
+	private fun reponerExploracion() {
+		if (suspendidoAhora || sinExploracion) return
+		Registro.i(ETIQUETA, "La pantalla se apagó con un dedo puesto: se vuelve a poner la exploración táctil")
+		configurar(true)
+		principal.removeCallbacks(devolverExploracion)
+		principal.postDelayed(devolverExploracion, REPONER_EXPLORACION_MS)
+	}
+
+	private val devolverExploracion = Runnable { if (ejecutor?.suspendido != true) configurar(false) }
 
 	override fun onServiceConnected() {
 		super.onServiceConnected()
@@ -193,6 +260,7 @@ class ServicioTiresias : AccessibilityService() {
 		Ajustes(this).p.edit().putBoolean(com.xebolax.tiresias.base.Claves.SERVICIO_ENCENDIDO, true).apply()
 		try {
 			iniciar()
+			revisarAgitar()
 		} catch (e: Throwable) {
 			// (también lo que no es una excepción, como una biblioteca que no carga: si no, queda sin apuntar por qué no arranca)
 			Registro.e(ETIQUETA, "Fallo al iniciar Tiresias", e)
@@ -264,6 +332,7 @@ class ServicioTiresias : AccessibilityService() {
 		// Tapar el sensor de proximidad calla la voz (solo se mira mientras habla)
 		parte("el sensor de proximidad") { iniciarProximidad(l, v) }
 		configurar(false)
+		parte("el recuadro del foco y las animaciones") { apariencia = AparienciaSistema(this, l).also { it.aplicar() } }
 		vigilarOtrosExploradores()
 		parte("el diccionario") { cargarDiccionario(v) }
 		registrarAvisos(l, alAccion, v, s)
@@ -282,8 +351,19 @@ class ServicioTiresias : AccessibilityService() {
 		proximidad = prox
 		v.alCambiarHablando = { hablando -> prox.alCambiarHablando(hablando) }
 		// El volumen nuevo al cambiarlo con las teclas («Volumen multimedia, 40 por ciento»)
-		avisoVolumen = AvisoVolumen(this, l.ajustes) { nombre, porCiento ->
-			l.manejador.post { l.decir(l.textos.getString(R.string.volumen_cambiado, l.textos.getString(nombre), porCiento)) }
+		avisoVolumen = AvisoVolumen(this, l.ajustes) { aviso ->
+			l.manejador.post {
+				// Con un deslizador enfocado, el cambio que no es de una tecla (el panel de volumen) ya lo dice el deslizador
+				if (!aviso.porTecla && l.focoAjustable) return@post
+				val t = l.textos
+				val texto = when {
+					aviso.silenciado -> t.getString(R.string.volumen_silenciado, t.getString(aviso.nombre))
+					aviso.breve -> t.getString(R.string.volumen_cambiado_breve, aviso.porCiento)
+					else -> t.getString(R.string.volumen_cambiado, t.getString(aviso.nombre), aviso.porCiento)
+				}
+				// En la lectura continua, a la cola: no la corta
+				l.decir(texto, if (l.continua.leyendo) Modo.ENCOLAR else Modo.INTERRUMPIR)
+			}
 		}.also { it.iniciar() }
 	}
 
@@ -300,6 +380,9 @@ class ServicioTiresias : AccessibilityService() {
 		}
 		// «Reanudar» de la notificación de pausa (solo la manda Tiresias: no se exporta)
 		androidx.core.content.ContextCompat.registerReceiver(this, reanudar, IntentFilter(AvisoPausa.REANUDAR), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+		// (antes del receptor del cargador: el nivel de ahora llega al registrarlo)
+		parte("los avisos de la batería") { avisosBateria = AvisosBateria(this, l).also { it.recargar() } }
+		parte("la duración de las llamadas") { duracionLlamada = DuracionLlamada(this, l).also { it.iniciar() } }
 		registerReceiver(cargador, IntentFilter().apply {
 			addAction(Intent.ACTION_POWER_CONNECTED)
 			addAction(Intent.ACTION_POWER_DISCONNECTED)
@@ -493,6 +576,7 @@ class ServicioTiresias : AccessibilityService() {
 					// La persiana o el panel de volumen encima de una app: al cerrarse hay que volver a lo de esa app
 					appBajoSistema = if (paquete == SISTEMA) (if (paqueteActual != SISTEMA) paqueteActual else appBajoSistema) else null
 					paqueteActual = paquete
+					revisarAgitar()
 					l.gestos.alCambiarApp(paquete)
 					l.perfiles.alCambiarApp(paquete)
 					// La barra del sistema (volumen, avisos) no es otra app: no quita la superficie braille
@@ -546,8 +630,13 @@ class ServicioTiresias : AccessibilityService() {
 		// Un gesto de verdad (el doble toque) manda sobre «un toque activa» del modo senior
 		l.manejador.post { l.cancelarToqueActiva() }
 		// El gesto de emergencia funciona siempre, aunque Tiresias esté suspendido o en ayuda de entrada
-		if (gesto == Gesto.TRIPLE_TOQUE_MANTENIDO_4) {
+		if (MapaGestos.EMERGENCIA[gesto] == Accion.MODO_SEGURO) {
 			l.manejador.post { ej.ejecutar(Accion.MODO_SEGURO) }
+			return true
+		}
+		// Con los toques bloqueados, solo vale el gesto que los desbloquea
+		if (l.toquesBloqueados && accion != Accion.BLOQUEAR_TOQUES) {
+			l.manejador.post { l.sonidos.tocar(com.xebolax.tiresias.voz.Sonido.BORDE) }
 			return true
 		}
 		// El modo edición tiene sus propios gestos (los de Jieshuo): los demás hacen lo de siempre
@@ -598,6 +687,10 @@ class ServicioTiresias : AccessibilityService() {
 
 	override fun onKeyEvent(e: KeyEvent?): Boolean {
 		e ?: return false
+		// Para el aviso de volumen: lo que cambia justo después de una tecla lo ha cambiado el usuario
+		if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || e.keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+			AvisoVolumen.teclaPulsada = android.os.SystemClock.uptimeMillis()
+		}
 		return try {
 			(teclado?.alPulsar(e) ?: false).also { Diagnostico.apuntarTecla(e, it) }
 		} catch (ex: Exception) {
@@ -672,8 +765,28 @@ class ServicioTiresias : AccessibilityService() {
 
 	override fun onUnbind(intent: Intent?): Boolean {
 		Ajustes(this).p.edit().putBoolean(com.xebolax.tiresias.base.Claves.SERVICIO_ENCENDIDO, false).apply()
+		// El recuadro y las animaciones, de vuelta mientras la conexión con Android sigue
+		runCatching { apariencia?.devolver() }.onFailure { Registro.w(ETIQUETA, "No se pudo devolver el recuadro y las animaciones", it) }
+		despedirse()
 		cerrar()
 		return super.onUnbind(intent)
+	}
+
+	/**
+	 * «Tiresias desactivado» al apagarlo (Backtalk, FinalAnnouncementVolume): confirma que el atajo de accesibilidad o
+	 * Ajustes lo han apagado. Con la voz ya cargada; se espera a que termine como mucho [DESPEDIDA_MS].
+	 */
+	private fun despedirse() {
+		if (instancia !== this) return
+		val v = voz ?: return
+		try {
+			val texto = Idioma.envolver(this).getString(R.string.servicio_desactivado)
+			v.decir(Enunciado(texto, Modo.INTERRUMPIR, Tipo.SISTEMA))
+			val limite = android.os.SystemClock.uptimeMillis() + DESPEDIDA_MS
+			while (v.hablando && android.os.SystemClock.uptimeMillis() < limite) android.os.SystemClock.sleep(20)
+		} catch (e: Exception) {
+			Registro.w(ETIQUETA, "No se pudo decir que Tiresias se apaga", e)
+		}
 	}
 
 	override fun onDestroy() {
@@ -687,6 +800,7 @@ class ServicioTiresias : AccessibilityService() {
 		vigilante?.cerrar()
 		Guarda.terminar(this)
 		runCatching { unregisterReceiver(pantalla) }
+		agitar?.escuchar(false)
 		runCatching { unregisterReceiver(cargador) }
 		runCatching { unregisterReceiver(reanudar) }
 		runCatching { unregisterReceiver(terminarAyuda) }
@@ -706,6 +820,10 @@ class ServicioTiresias : AccessibilityService() {
 			dejarDeVigilarOtros()
 			proximidad?.cerrar()
 			avisoVolumen?.cerrar()
+			principal.removeCallbacks(devolverExploracion)
+			avisosBateria?.cerrar()
+			duracionLlamada?.cerrar()
+			apariencia?.devolver()
 		}
 		runCatching { lector?.cerrar() }
 		runCatching {
@@ -719,6 +837,16 @@ class ServicioTiresias : AccessibilityService() {
 	fun recargarAjustes() {
 		lector?.recargarAjustes()
 		voz?.let { cargarDiccionario(it) }
+		principal.post {
+			apariencia?.aplicar()
+			avisosBateria?.recargar()
+		}
+	}
+
+	/** Tras recuperar una copia de seguridad: los sonidos y las reparaciones de la copia, ya. */
+	fun alRecuperarCopia() {
+		recargarSonidos()
+		lector?.let { l -> l.manejador.post { l.reparador.recargar() } }
 	}
 
 	fun probarVoz(texto: String) = voz?.probar(texto)
@@ -944,6 +1072,10 @@ class ServicioTiresias : AccessibilityService() {
 		/** Cada cuánto se mira si ya se ha levantado el dedo para cambiar el doble toque. */
 		private const val ESPERA_DEDO_MS = 120L
 		private const val GESTOS_PARA_RECORDAR_SALIDA = 8
+		/** Lo que se espera a que acabe «Tiresias desactivado» antes de cerrar la voz. */
+		private const val DESPEDIDA_MS = 1500L
+		/** Lo que está quitada la exploración táctil al volver a ponerla (como «Reiniciar la exploración táctil»). */
+		private const val REPONER_EXPLORACION_MS = 600L
 
 		/** El servicio conectado ahora, o null si Tiresias no está activo. */
 		@Volatile var instancia: ServicioTiresias? = null

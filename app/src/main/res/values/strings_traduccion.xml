@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Traducción sin conexión (OPUS-MT): los traductores que se descargan y lo que se dice al traducir. -->
+<resources>
+	<!-- Descargas -->
+	<string name="recurso_traductor">Traductor sin conexión</string>
+	<string name="recurso_traductor_desc">Traduce sin Internet el texto del elemento y lo último que ha dicho Tiresias, con «Reconocer texto y traducir» y «Traducir lo último dicho». Traduce en un solo sentido: para ir y volver hacen falta los dos. Modelos OPUS-MT de la Universidad de Helsinki.</string>
+	<string name="rec_cat_traduccion">Traducción sin conexión</string>
+	<string name="rec_traduccion_explicacion">Traductores que funcionan sin Internet y sin enviar el texto a nadie. Descarga el del idioma que quieras entender; si no hay traductor para un texto, Tiresias usa la inteligencia artificial, si tienes una preparada.</string>
+	<string name="rec_traductor_nombre">Traductor de %1$s a %2$s</string>
+
+	<!-- Al traducir -->
+	<string name="traduccion_traduciendo">Traduciendo…</string>
+	<string name="traduccion_mismo_idioma">El texto ya está en %1$s</string>
+	<string name="traduccion_sin_nada">Para traducir sin Internet, descarga un traductor en Descargas, Traducción sin conexión. También puedes preparar una inteligencia artificial en Ajustes.</string>
+	<string name="traduccion_falta_par">No hay traductor de %1$s a %2$s. Descárgalo en Descargas, Traducción sin conexión.</string>
+	<string name="traduccion_error">No se pudo traducir el texto</string>
+</resources>

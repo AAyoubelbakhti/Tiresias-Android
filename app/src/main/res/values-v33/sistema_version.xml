@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<bool name="sistema_android_12">true</bool>
+	<bool name="sistema_android_13">true</bool>
+</resources>

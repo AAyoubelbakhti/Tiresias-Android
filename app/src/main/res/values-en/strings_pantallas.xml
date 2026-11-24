@@ -21,7 +21,7 @@
 	<string name="tut_6_titulo">The volume keys</string>
 	<string name="tut_6">If you hold both volume keys, Tiresias pauses (for example, so someone else can use the phone). Resume the same way, or by turning the screen off and on.</string>
 	<string name="tut_7_titulo">If something goes wrong</string>
-	<string name="tut_7">Four-finger triple-tap and hold: this is safe mode. It removes the screen curtain, the pause and the add-ons, and goes back to the Tiresias voice. It always works.</string>
+	<string name="tut_7">Four-finger double-tap and hold: this is safe mode. It removes the screen curtain, the pause and the add-ons, and goes back to the Tiresias voice. It always works.</string>
 	<string name="tut_8_titulo">Practice</string>
 	<string name="tut_8">With the button below, Tiresias announces each gesture you make instead of performing it. To exit, tap the button again (or press Tiresias+1 on a keyboard).</string>
 

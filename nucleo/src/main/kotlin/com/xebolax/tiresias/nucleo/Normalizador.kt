@@ -24,6 +24,8 @@ data class AjustesTexto(
 	/** A partir de cuántos símbolos iguales seguidos se dice «igual repetido 12 veces». 0: nunca. */
 	val repetidos: Int = 4,
 	val emojis: ModoEmojis = ModoEmojis.NOMBRE,
+	/** Con la puntuación «ninguna», dejar al motor los símbolos que cambian el sentido («−5», «20 %», «3 €», «2 = 2»). */
+	val simbolosSentido: Boolean = false,
 )
 
 /** Un carácter dicho suelto: el texto y si es mayúscula (para subir el tono o sonar). */
@@ -50,7 +52,7 @@ class Normalizador(
 		if (a.repetidos > 0) r = repetidos(r, a.repetidos)
 		if (a.emojis == ModoEmojis.QUITAR) r = quitarEmojis(r)
 		// Con los emojis para el motor, la tabla de símbolos no los toca (lo demás, sí)
-		r = if (a.emojis == ModoEmojis.MOTOR) fueraDeEmojis(r) { simbolos.aplicar(it, a.puntuacion) } else simbolos.aplicar(r, a.puntuacion)
+		r = if (a.emojis == ModoEmojis.MOTOR) fueraDeEmojis(r) { simbolos.aplicar(it, a.puntuacion, a.simbolosSentido) } else simbolos.aplicar(r, a.puntuacion, a.simbolosSentido)
 		if (a.numeros == ModoNumeros.DIGITOS) r = digitos(r)
 		// Sin dobles espacios ni espacio delante de un signo (lo dejan los nombres de símbolo: «40 por ciento ,»)
 		return r.replace(Regex("[ \\t]{2,}"), " ").replace(Regex(" +([,.;:!?])"), "$1").trim()

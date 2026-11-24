@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What is new in 1.0.19. -->
+<resources>
+	<string name="aj_motor_otras_apps">Voice for other apps and screen readers</string>
+	<string-array name="motor_otras_apps_nombres">
+		<item>The same one Tiresias uses</item>
+		<item>eSpeak NG</item>
+		<item>Eloquence</item>
+		<item>Pico</item>
+		<item>Downloaded neural voice</item>
+	</string-array>
+	<string name="aj_acciones_solas">Go to Actions on items that have them</string>
+	<string name="aj_acciones_solas_res">If you are on a control other than the default one, the selector switches to Actions by itself and goes back to the previous one when you leave the item</string>
+	<string name="sin_foco">Nothing is focused</string>
+	<string name="sin_faltas">No spelling mistakes</string>
+	<string name="control_frases">Sentences</string>
+	<string name="control_opciones">Radio buttons</string>
+	<string name="control_desplegables">Drop-down lists</string>
+	<string name="control_elementos_lista">List items</string>
+	<string name="control_enlaces_visitados">Visited links</string>
+	<string name="control_enlaces_sin_visitar">Unvisited links</string>
+	<string name="control_encabezados_1">Level 1 headings</string>
+	<string name="control_encabezados_2">Level 2 headings</string>
+	<string name="control_encabezados_3">Level 3 headings</string>
+	<string name="control_encabezados_4">Level 4 headings</string>
+	<string name="control_encabezados_5">Level 5 headings</string>
+	<string name="control_encabezados_6">Level 6 headings</string>
+	<string name="control_desplazar">Scroll</string>
+	<string name="control_contenedores">Containers</string>
+	<string name="control_faltas">Spelling mistakes</string>
+	<string name="accion_boton_confirmar">Press the OK button</string>
+	<string name="accion_boton_cancelar">Press the Cancel button</string>
+	<string name="accion_compartir_imagen">Share the image of the focused item</string>
+	<string name="accion_compartir_captura">Share a screenshot</string>
+	<string name="accion_primer_control">Go to the first reading control</string>
+	<string name="accion_tocar_elemento">Touch the focused item with a real tap</string>
+	<string name="accion_decir_posicion">Say where the focused item is</string>
+	<string name="accion_bloquear_toques">Lock or unlock touch</string>
+	<string name="botones_confirmar">ok, yes, done, save, send, continue, next, allow, apply, confirm, finish, accept, aceptar, sí, guardar, enviar</string>
+	<string name="botones_cancelar">cancel, no, close, dismiss, back, deny, not now, don\'t allow, exit, cancelar, cerrar</string>
+	<string name="sin_boton_confirmar">There is no OK button</string>
+	<string name="sin_boton_cancelar">There is no Cancel button</string>
+	<string name="posicion_arriba">Top</string>
+	<string name="posicion_en_medio">Middle</string>
+	<string name="posicion_abajo">Bottom</string>
+	<string name="posicion_izquierda">left</string>
+	<string name="posicion_centro">centre</string>
+	<string name="posicion_derecha">right</string>
+	<string name="posicion_elemento">%1$s %2$s. It takes %3$d %% of the width and %4$d %% of the height</string>
+	<string name="toques_bloqueados">Touch locked. Repeat the command to unlock it</string>
+	<string name="toques_desbloqueados">Touch unlocked</string>
+	<string name="aj_decir_posicion_desplazar">Say where the list stops when you scroll it</string>
+	<string name="aj_decir_posicion_desplazar_res">After scrolling with a command, it says the page or the items shown, such as “Items 11 to 20 of 54”</string>
+	<string name="lect_pagina_de">Page %1$d of %2$d</string>
+	<string name="lect_elementos_de">Items %1$d to %2$d of %3$d</string>
+	<string name="gesto_agitar">Shake the phone</string>
+	<string name="aj_agitar_sensibilidad">Shake sensitivity</string>
+	<string-array name="agitar_sensibilidad_nombres">
+		<item>Low (shake it hard)</item>
+		<item>Medium</item>
+		<item>High</item>
+	</string-array>
+</resources>

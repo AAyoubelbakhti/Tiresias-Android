@@ -26,6 +26,8 @@ enum class Gesto(val dedos: Int) {
 	ARRIBA_4(4), ABAJO_4(4), IZQUIERDA_4(4), DERECHA_4(4),
 	// Sensor de huella (donde exista)
 	HUELLA_ARRIBA(0), HUELLA_ABAJO(0), HUELLA_IZQUIERDA(0), HUELLA_DERECHA(0),
+	// Agitar el móvil (acelerómetro; solo se escucha si tiene una acción: SandFly 073bb90b4)
+	AGITAR(0),
 	// Teclas de volumen (las reconoce Tiresias)
 	VOLUMEN_ARRIBA_MANTENIDO(0), VOLUMEN_ABAJO_MANTENIDO(0), VOLUMEN_AMBAS(0), VOLUMEN_ARRIBA_TRIPLE(0), VOLUMEN_ABAJO_TRIPLE(0),
 	// Una pulsación corta de una tecla de volumen (SandFly 86137ed80): con una acción, esa tecla ya no cambia el volumen
@@ -137,6 +139,11 @@ enum class Accion {
 	PREGUNTAR_IA_VOZ,
 	// 1.0.18 (SandFly 4fc6a8447 y 15e6d3f3a): repetir lo último más despacio; decir todo lo escrito en el campo
 	REPETIR_DESPACIO, LEER_CAMPO,
+	// 1.0.19 (SandFly e32b290ad, 95a372c25, 08342168e, ed5a5da8d, 44978f275): pulsar el botón de aceptar o el de cancelar
+	// de la pantalla; compartir la imagen de lo enfocado o la captura; ir al primer control de lectura; tocar lo enfocado
+	// con un dedo de verdad; decir dónde está en la pantalla; bloquear los toques (el móvil en el bolsillo)
+	BOTON_CONFIRMAR, BOTON_CANCELAR, COMPARTIR_IMAGEN, COMPARTIR_CAPTURA, PRIMER_CONTROL, TOCAR_ELEMENTO, DECIR_POSICION,
+	BLOQUEAR_TOQUES,
 }
 
 /** Lo que puede decir el gesto de estado («Hora, fecha y batería»), en el orden que se elija. */
@@ -213,6 +220,10 @@ class MapaGestos(private val asignaciones: Map<Gesto, Accion>) {
 		 * pantalla» de One UI 8 y de los servicios que dejan el móvil inservible).
 		 */
 		val EMERGENCIA: Map<Gesto, Accion> = mapOf(
+			// Doble toque y mantener con cuatro dedos: Android no reconoce el triple toque mantenido con cuatro dedos (no
+			// existe esa constante), así que el gesto de antes solo llegaba por las órdenes de prueba y no se podía hacer
+			// con los dedos. Se queda también el de antes para las pruebas
+			Gesto.DOBLE_TOQUE_MANTENIDO_4 to Accion.MODO_SEGURO,
 			Gesto.TRIPLE_TOQUE_MANTENIDO_4 to Accion.MODO_SEGURO,
 		)
 
@@ -242,7 +253,9 @@ class MapaGestos(private val asignaciones: Map<Gesto, Accion>) {
 				Gesto.DOBLE_TOQUE_2 to Accion.MULTIMEDIA,
 				Gesto.TRIPLE_TOQUE_2 to Accion.LEER_DESDE_AQUI,
 				Gesto.DOBLE_TOQUE_MANTENIDO_2 to Accion.MODO_SELECCION,
-				Gesto.TRIPLE_TOQUE_MANTENIDO_2 to Accion.ALTERNAR_VOZ,
+				// (dejar pasar el siguiente gesto vivía en el doble toque mantenido con cuatro dedos, que ahora es la salida de
+				// emergencia; cambiar de voz sigue en el menú y se puede poner en cualquier gesto)
+				Gesto.TRIPLE_TOQUE_MANTENIDO_2 to Accion.PASAR_GESTO,
 				Gesto.TOQUE_MANTENIDO_2 to Accion.REPETIR,
 				Gesto.ARRIBA_2 to Accion.DESPLAZAR_ARRIBA,
 				Gesto.ABAJO_2 to Accion.DESPLAZAR_ABAJO,
@@ -261,7 +274,6 @@ class MapaGestos(private val asignaciones: Map<Gesto, Accion>) {
 				Gesto.TOQUE_4 to Accion.ESTADO_SISTEMA,
 				Gesto.DOBLE_TOQUE_4 to Accion.TUTORIAL,
 				Gesto.TRIPLE_TOQUE_4 to Accion.CORTINA,
-				Gesto.DOBLE_TOQUE_MANTENIDO_4 to Accion.PASAR_GESTO,
 				Gesto.ARRIBA_4 to Accion.VENTANA_ANTERIOR,
 				Gesto.ABAJO_4 to Accion.VENTANA_SIGUIENTE,
 				Gesto.IZQUIERDA_4 to Accion.CONTENEDOR_ANTERIOR,
@@ -351,13 +363,24 @@ enum class ControlLectura {
 	AVANCE,
 	// Arriba, reconocer el texto del elemento (OCR); abajo, traducirlo con la IA (Ideafix)
 	TEXTO_IA,
+	// 1.0.19 (Backtalk 78b7e5a y su navegación web): por frases; botones de opción, desplegables y elementos de lista;
+	// enlaces visitados y sin visitar; encabezados de cada nivel; desplazar la lista; contenedores; faltas de ortografía
+	FRASES, OPCIONES, DESPLEGABLES, ELEMENTOS_LISTA, ENLACES_VISITADOS, ENLACES_SIN_VISITAR,
+	ENCABEZADOS_1, ENCABEZADOS_2, ENCABEZADOS_3, ENCABEZADOS_4, ENCABEZADOS_5, ENCABEZADOS_6,
+	DESPLAZAR, CONTENEDORES, FALTAS,
 	;
 
 	/** Si es un control de movimiento por el texto o por la pantalla (los demás cambian un ajuste). */
-	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA, PORTAPAPELES, AVANCE, TEXTO_IA)
+	val esNavegacion: Boolean get() = this !in setOf(VELOCIDAD, VOLUMEN, TONO, PUNTUACION, IDIOMA, VERBOSIDAD, MOTOR, SALIDA, ACCIONES, EDICION, MULTIMEDIA, PORTAPAPELES, AVANCE, TEXTO_IA, DESPLAZAR, FALTAS)
 
 	/** Los que solo tienen sentido dentro de una página web (Backtalk 222). */
-	val soloWeb: Boolean get() = this == ENLACES || this == REGIONES
+	val soloWeb: Boolean get() = this == ENLACES || this == REGIONES || this == ENLACES_VISITADOS || this == ENLACES_SIN_VISITAR
+
+	/** El nivel de un control de encabezados de un nivel (1 a 6), o 0. */
+	val nivelEncabezado: Int get() = when (this) {
+		ENCABEZADOS_1 -> 1; ENCABEZADOS_2 -> 2; ENCABEZADOS_3 -> 3; ENCABEZADOS_4 -> 4; ENCABEZADOS_5 -> 5; ENCABEZADOS_6 -> 6
+		else -> 0
+	}
 
 	companion object {
 		val POR_DEFECTO = listOf(

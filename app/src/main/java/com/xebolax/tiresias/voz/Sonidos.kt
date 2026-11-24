@@ -53,6 +53,8 @@ enum class Sonido {
 	FILA,
 	/** Teclado braille en pantalla: espacio, borrar e Intro (Can Talk). */
 	TECLA_ESPACIO, TECLA_BORRAR, TECLA_INTRO,
+	/** La batería está llena (con los avisos del cargador, SandFly 4356e3f4b). */
+	CARGA_COMPLETA,
 }
 
 /**
@@ -174,6 +176,8 @@ class Sonidos(contexto: Context) {
 			Sonido.TECLA_ESPACIO -> listOf(Triple(1976.0, 14, 14.0))
 			Sonido.TECLA_BORRAR -> listOf(Triple(1319.0, 12, 12.0), Triple(988.0, 16, 12.0))
 			Sonido.TECLA_INTRO -> listOf(Triple(1568.0, 18, 10.0), Triple(2093.0, 26, 10.0))
+			// Tres notas que suben y una larga arriba: algo que se ha completado
+			Sonido.CARGA_COMPLETA -> listOf(Triple(659.0, 70, 4.0), Triple(784.0, 70, 4.0), Triple(988.0, 70, 4.0), Triple(1319.0, 220, 2.5))
 		}
 		val hz = 22050
 		val muestras = ArrayList<Short>()
@@ -314,6 +318,7 @@ class Vibracion(contexto: Context) {
 		Sonido.TECLA_ESPACIO -> longArrayOf(0, 9)
 		Sonido.TECLA_BORRAR -> longArrayOf(0, 9, 25, 9)
 		Sonido.TECLA_INTRO -> longArrayOf(0, 18)
+		Sonido.CARGA_COMPLETA -> longArrayOf(0, 30, 40, 30, 40, 80)
 	}
 
 	/**

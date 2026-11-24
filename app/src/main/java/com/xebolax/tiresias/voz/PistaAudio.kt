@@ -22,7 +22,7 @@ import com.xebolax.tiresias.base.Registro
  * Solo se usa desde el hilo de la voz, salvo [cortar], que puede llamarse desde
  * cualquier hilo.
  */
-class PistaAudio(atributosIniciales: AudioAttributes) {
+open class PistaAudio(atributosIniciales: AudioAttributes) {
 	/** Los atributos de la voz; al cambiarlos (otro volumen), la pista se rehace en la siguiente frase. */
 	@Volatile var atributos: AudioAttributes = atributosIniciales
 	private var atributosDePista: AudioAttributes? = null
@@ -49,7 +49,7 @@ class PistaAudio(atributosIniciales: AudioAttributes) {
 	 * entregado a la pista. [sigue] se consulta entre bloques: si devuelve
 	 * false, se deja de escribir. Devuelve false si la pista falló.
 	 */
-	fun escribir(muestras: ShortArray, hz: Int, sigue: () -> Boolean): Boolean {
+	open fun escribir(muestras: ShortArray, hz: Int, sigue: () -> Boolean): Boolean {
 		if (muestras.isEmpty()) return true
 		val p = abrir(hz) ?: return false
 		cortada = false
@@ -107,7 +107,7 @@ class PistaAudio(atributosIniciales: AudioAttributes) {
 	 * Espera a que suene lo ya escrito (para saber cuándo acaba una frase) o a
 	 * que se corte. Devuelve true si terminó de sonar.
 	 */
-	fun esperarFin(sigue: () -> Boolean): Boolean {
+	open fun esperarFin(sigue: () -> Boolean): Boolean {
 		val p = pista ?: return true
 		val objetivo = entregadas
 		// Con Bluetooth, la salida coge el sonido a tirones (la cabeza se para decenas de milisegundos con el búfer
@@ -138,7 +138,7 @@ class PistaAudio(atributosIniciales: AudioAttributes) {
 		conBluetooth || runCatching { p.routedDevice?.type in BLUETOOTH }.getOrDefault(false)
 
 	/** Corta en seco lo que suena (desde cualquier hilo). */
-	fun cortar() {
+	open fun cortar() {
 		cortada = true
 		val p = pista ?: return
 		runCatching {

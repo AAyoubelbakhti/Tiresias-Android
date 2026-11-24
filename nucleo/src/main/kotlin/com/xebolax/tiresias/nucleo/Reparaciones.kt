@@ -89,6 +89,9 @@ object Reparaciones {
 			val a = paradas[i - 1]
 			val b = paradas[i]
 			if (a.huella == 0 || a.huella != b.huella) continue
+			// Solo si una se pulsa y la otra no (la foto y el nombre): dos textos iguales seguidos (dos fechas «Ayer») son
+			// contenido de verdad, y ocultarlos por su identificador escondía todas las fechas de la pantalla
+			if (a.accionable == b.accionable) continue
 			val sobra = when {
 				!b.accionable && b.id != null && !b.marcable && !b.editable -> b
 				!a.accionable && a.id != null && !a.marcable && !a.editable -> a

@@ -135,6 +135,12 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 	@Volatile private var sinRespuestaDesde = 0L
 	/** Las frases seguidas que se cortaron antes de que el motor empezara a decirlas. */
 	@Volatile private var cortesSinEmpezar = 0
+	/**
+	 * Los idiomas que el motor ha rechazado y cuándo (SandFly 4a3e861ce): durante [REINTENTO_IDIOMA_MS] no se le
+	 * vuelven a pedir. Cada `setLanguage` es una llamada lenta al motor, y se hacía en cada frase de ese idioma.
+	 * Solo lo usa el hilo de la voz; se olvida al cambiar de voz o al cerrar el motor (otro motor es otro objeto).
+	 */
+	private val rechazados = HashMap<Locale, Long>()
 
 	private class Pendiente(val id: String) {
 		val empezado = CountDownLatch(1)
@@ -200,18 +206,24 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 		vozElegida = nombre
 		// La próxima frase vuelve a poner idioma y voz: si no, la voz nueva no sonaba hasta cambiar de idioma
 		idiomaActual = null
+		synchronized(rechazados) { rechazados.clear() }
 	}
 
 	override fun hablar(texto: String, idioma: Locale, velocidad: Int, tono: Int, sigue: () -> Boolean, alEmpezar: () -> Unit): Resultado {
 		val t = asegurar() ?: return Resultado.FALLO
 		try {
 			if (idioma != idiomaActual) {
+				// Rechazado hace poco: sin volver a preguntar al motor (la frase la dice la voz incluida)
+				val rechazadoEn = synchronized(rechazados) { rechazados[idioma] }
+				if (rechazadoEn != null && SystemClock.uptimeMillis() - rechazadoEn < REINTENTO_IDIOMA_MS) return Resultado.FALLO
 				val r = t.setLanguage(idioma)
 				if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
-					Registro.w(ETIQUETA, "El motor $id no tiene ${idioma.toLanguageTag()}")
+					Registro.w(ETIQUETA, "El motor $id no tiene ${idioma.toLanguageTag()}: no se le vuelve a pedir en ${REINTENTO_IDIOMA_MS / 1000} s")
+					synchronized(rechazados) { rechazados[idioma] = SystemClock.uptimeMillis() }
 					// Sin el idioma: mejor la voz incluida que una voz que no lo sabe leer
 					return Resultado.FALLO
 				}
+				synchronized(rechazados) { rechazados.remove(idioma) }
 				idiomaActual = idioma
 				val guardada = vozElegida
 				if (guardada.isNotEmpty()) {
@@ -281,6 +293,7 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 		tts = null
 		listo = false
 		idiomaActual = null
+		synchronized(rechazados) { rechazados.clear() }
 	}
 
 	companion object {
@@ -289,6 +302,8 @@ class MotorSistema(private val contexto: Context, override val id: String, priva
 		const val ESPERA_INICIO_MS = 3000L
 		/** Frases cortadas sin empezar a partir de las cuales la espera ya no vuelve a cero. */
 		private const val CORTES_PARA_SEGUIR_ESPERA = 3
+		/** Lo que se tarda en volver a pedir al motor un idioma que ha rechazado (SandFly: 60 s). */
+		private const val REINTENTO_IDIOMA_MS = 60_000L
 
 		/** Los motores de voz del sistema instalados (paquete y nombre), sin Tiresias. */
 		/**

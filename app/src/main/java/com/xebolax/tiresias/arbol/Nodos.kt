@@ -18,8 +18,6 @@ object Nodos {
 	private const val PROFUNDIDAD_MAXIMA = 60
 	/** Hasta cuántos niveles se mira dentro de un control para saber si agrupa a otros (página, contenedor, icono). */
 	private const val NIVELES_AGRUPAR = 4
-	/** Hasta dónde lee un control los textos de dentro ([textoHijos] baja nueve niveles): más hondo, cada texto es su parada. */
-	private const val NIVELES_LECTURA = 9
 	/** La parte de la pantalla que ocupa el marco de una página entera (de alto). */
 	private const val PARTE_PAGINA = 0.6f
 	/** La parte de la pantalla que ocupa de ancho el marco o el velo de una web. */
@@ -196,29 +194,267 @@ object Nodos {
 		!n.contentDescription.isNullOrBlank() || !n.text.isNullOrBlank() ||
 			(Build.VERSION.SDK_INT >= 30 && !n.stateDescription.isNullOrBlank())
 
+	// --- La regla única: qué es una parada ---------------------------------------------------------------------------
+	//
+	// Como `shouldFocusNode` de TalkBack: una sola regla para lo que se recorre al deslizar, lo que lee cada parada y lo
+	// que se enfoca al tocar. Antes estaba repartida en cuatro funciones con límites distintos (lo que leía una parada
+	// llegaba a 9 niveles; lo que quitaba del recorrido, a 5), y donde no coincidían se saltaban cosas, se juntaban o el
+	// foco del toque quedaba fuera del orden (Play Store «Acerca de esta app»: todo dentro de un marco pulsable a pantalla
+	// completa con los textos muy hondos). Ahora no hay límite de profundidad: cada texto es una parada o lo lee
+	// exactamente una parada, la primera de las de encima.
+
+	/** Memoria de lo decidido para cada nodo (como `speakingNodesCache` de TalkBack): vale lo que dura un orden. */
+	private val memoriaParada = java.util.concurrent.ConcurrentHashMap<AccessibilityNodeInfo, Boolean>()
+	private val memoriaParadaOculta = java.util.concurrent.ConcurrentHashMap<AccessibilityNodeInfo, Boolean>()
+	private val memoriaHabla = java.util.concurrent.ConcurrentHashMap<AccessibilityNodeInfo, Boolean>()
+	private val memoriaContenido = java.util.concurrent.ConcurrentHashMap<AccessibilityNodeInfo, Any>()
+	@Volatile private var memoriaDesde = 0L
+	/** Lo que dura lo decidido fuera de un orden (al tocar, al describir): la pantalla puede haber cambiado. */
+	private const val VIDA_MEMORIA_MS = 400L
+	private val SIN_CONTENIDO = Any()
+
+	/** Olvida lo decidido (al empezar un orden nuevo, o si ya es viejo). */
+	private fun olvidar(forzar: Boolean) {
+		val ahora = android.os.SystemClock.uptimeMillis()
+		if (!forzar && ahora - memoriaDesde < VIDA_MEMORIA_MS) return
+		memoriaParada.clear()
+		memoriaParadaOculta.clear()
+		memoriaHabla.clear()
+		memoriaContenido.clear()
+		memoriaDesde = ahora
+	}
+
 	/**
-	 * Si [n] recibe el foco al navegar (la regla de `shouldFocusNode` de TalkBack,
-	 * simplificada): visible y, o bien es un control, o tiene texto y ningún
-	 * antepasado que lo vaya a leer por él.
+	 * Si [n] «toma el foco» por sí mismo (`takesFocusWhenVisible` de TalkBack): se pulsa, se mantiene, se edita, la app
+	 * lo hace parada (`screenReaderFocusable`), es un deslizador, o es enfocable (como en TalkBack, enfocable cuenta: la
+	 * forma clásica de agrupar «Etiqueta: valor» y las vistas `accessible` de React Native). Salvo:
+	 * - un texto que solo se pulsa porque lleva enlaces, dentro de algo que se pulsa (el mensaje de WhatsApp): va con
+	 *   su fila;
+	 * - las listas y las páginas web, que no son paradas por sí mismas;
+	 * - un marco pulsable que repite a su padre pulsable, del mismo tamaño y sin decir nada distinto.
 	 */
-	fun recibeFoco(n: AccessibilityNodeInfo, aunqueNoSeVea: Boolean = false): Boolean {
-		if (!aunqueNoSeVea && !n.isVisibleToUser) return false
+	fun tomaFoco(n: AccessibilityNodeInfo): Boolean {
 		if (Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable) return true
-		val rol = rol(n)
-		if (rol == Rol.WEB && n.childCount > 0) return false
+		if (esAjustable(n) && n.isVisibleToUser) return true
+		val pulsa = accionable(n)
+		if (!pulsa && !n.isFocusable) return false
+		if (esLista(n) || rol(n) == Rol.WEB) return false
+		if (!pulsa && soloEnfocableQueNoAgrupa(n)) return false
+		// Lo marcable que no se pulsa (el interruptor de una fila de ajustes) lo dice la fila con su estado
+		if (n.isCheckable && !pulsa) return false
+		if (pulsa && esTextoConEnlacesEnFila(n)) return false
+		if (esEnvolturaRepetida(n)) return false
+		return true
+	}
+
+	/**
+	 * Algo que solo es enfocable (no se pulsa) y no sirve para agrupar: la vista raíz de las apps hechas con Compose y otros
+	 * contenedores de toda la pantalla, que son enfocables para el teclado; y en una web, lo enfocable que no es un control
+	 * (un `main` con `tabindex`). Si contaran, la pantalla o la página entera serían una sola parada.
+	 */
+	private fun soloEnfocableQueNoAgrupa(n: AccessibilityNodeInfo): Boolean {
+		val web = rolChrome(n)
+		if (web != null) return web !in ROLES_CONTROL_WEB
+		if (n.childCount == 0) return false
+		val clase = n.className?.toString().orEmpty()
+		if (clase.endsWith("ComposeView") || clase.endsWith("AndroidComposeView") || clase.endsWith("DecorView")) return true
+		val m = android.content.res.Resources.getSystem().displayMetrics
+		val r = limites(n)
+		return m.heightPixels > 0 && r.height() >= m.heightPixels / 2
+	}
+
+	/** Un texto que es pulsable solo por llevar enlaces, con un antepasado cercano que se pulsa (se lee con él). */
+	private fun esTextoConEnlacesEnFila(n: AccessibilityNodeInfo): Boolean {
+		if (n.className?.toString()?.endsWith("TextView") != true || !n.contentDescription.isNullOrBlank()) return false
+		if (!tieneEnlacesEnTexto(n)) return false
+		var p = runCatching { n.parent }.getOrNull()
+		repeat(3) {
+			val x = p ?: return false
+			if (esLista(x)) return false
+			if (accionable(x)) return true
+			p = runCatching { x.parent }.getOrNull()
+		}
+		return false
+	}
+
+	/** Un marco pulsable sin nada propio que ocupa lo mismo que su padre pulsable: el mismo control dos veces. */
+	private fun esEnvolturaRepetida(n: AccessibilityNodeInfo): Boolean {
+		if (tieneTexto(n) || n.isCheckable || n.isEditable || n.childCount == 0) return false
+		val p = runCatching { n.parent }.getOrNull() ?: return false
+		if (!accionable(p) || esLista(p)) return false
+		val a = limites(n)
+		val b = limites(p)
+		if (a.isEmpty || b.isEmpty) return false
+		return a.width().toLong() * a.height() >= b.width().toLong() * b.height() * 9 / 10
+	}
+
+	/**
+	 * Si [n] tiene algo que decir (`isSpeakingNode` de TalkBack): texto, estado, se marca, es un encabezado, o lleva
+	 * dentro, sin límite de niveles, algo visible que habla y que no es parada por su cuenta.
+	 */
+	fun habla(n: AccessibilityNodeInfo): Boolean = habla(n, 0)
+
+	private fun habla(n: AccessibilityNodeInfo, nivel: Int): Boolean {
+		memoriaHabla[n]?.let { return it }
+		// (un encabezado sin texto, como los separadores de categoría de los Ajustes, no dice nada)
+		val r = tieneTexto(n) || n.isCheckable || (nivel < PROFUNDIDAD_MAXIMA && hablaDentro(n, nivel))
+		memoriaHabla[n] = r
+		return r
+	}
+
+	private fun hablaDentro(n: AccessibilityNodeInfo, nivel: Int): Boolean {
+		for (i in 0 until n.childCount) {
+			val h = runCatching { n.getChild(i) }.getOrNull() ?: continue
+			if (!h.isVisibleToUser) continue
+			if (esCita(h)) return true
+			if (tomaFoco(h) || esParadaSuelta(h)) continue
+			if (habla(h, nivel + 1)) return true
+		}
+		return false
+	}
+
+	/**
+	 * Una fila de una lista que no se pulsa (`isTopLevelScrollItem` de TalkBack): el hijo directo de una lista de verdad
+	 * (con colección o de clase de lista). Es una parada si habla, y lee lo de dentro: un mensaje de un chat que no se
+	 * pulsa es una parada, no tres (nombre, texto, hora). Un «hijo» que ocupa casi toda la lista no es una fila: es la
+	 * página entera dentro de una lista.
+	 */
+	private fun esFila(n: AccessibilityNodeInfo): Boolean {
+		if (n.childCount == 0 || n.isEditable) return false
+		val p = runCatching { n.parent }.getOrNull() ?: return false
+		if (rol(p) == Rol.DESPLEGABLE) return false
+		if (p.collectionInfo == null && !esClaseDeLista(p)) return false
+		if (rolChrome(n) != null) return false
+		val a = limites(n)
+		val b = limites(p)
+		return b.height() <= 0 || a.height() < b.height() * 8 / 10
+	}
+
+	/** Lo que hay dentro de [n] contado una vez por orden. */
+	private fun contenidoGuardado(n: AccessibilityNodeInfo): Dentro? {
+		memoriaContenido[n]?.let { return it as? Dentro }
+		val d = contenido(n)
+		memoriaContenido[n] = d ?: SIN_CONTENIDO
+		return d
+	}
+
+	/**
+	 * Si [p], siendo parada, lee lo de dentro que no es parada: no el marco pulsable de una página entera, ni algo de
+	 * una web con mucho texto dentro, ni con el texto de dentro por separado.
+	 */
+	private fun paradaQueLee(p: AccessibilityNodeInfo): Boolean {
+		if (textoDentroAparte) return false
+		if (!(tomaFoco(p) || esFila(p))) return false
+		if (esVeloDePagina(p) || esMarcoDePagina(p, contenidoGuardado(p)) || contenedorWebLargo(p)) return false
+		return true
+	}
+
+	/** Si [n] tiene hijos, no se pulsa y mide lo mismo que su ventana (`areBoundsIdenticalToWindow`): no es parada. */
+	private fun comoLaVentana(n: AccessibilityNodeInfo): Boolean {
+		if (n.childCount == 0 || accionable(n)) return false
+		val ventana = runCatching { n.window }.getOrNull() ?: return false
+		val v = Rect()
+		ventana.getBoundsInScreen(v)
+		return limites(n) == v
+	}
+
+	/**
+	 * Si [n] recibe el foco al navegar: la regla única (`shouldFocusNode` de TalkBack con lo propio de Tiresias). Con
+	 * [aunqueNoSeVea], también lo que está fuera de la pantalla (lo de una página web que se ve).
+	 */
+	fun esParada(n: AccessibilityNodeInfo, aunqueNoSeVea: Boolean = false): Boolean {
+		val memoria = if (aunqueNoSeVea) memoriaParadaOculta else memoriaParada
+		memoria[n]?.let { return it }
+		val r = calcularParada(n, aunqueNoSeVea)
+		memoria[n] = r
+		return r
+	}
+
+	private fun calcularParada(n: AccessibilityNodeInfo, aunqueNoSeVea: Boolean): Boolean {
+		if (!aunqueNoSeVea && !n.isVisibleToUser) return false
+		if (rol(n) == Rol.WEB && n.childCount > 0) return false
 		// Una lista con filas no es una parada por sí misma aunque la app la haga pulsable o mantenible y le ponga
 		// nombre (la de los chats de WhatsApp): son sus filas, como en TalkBack
 		if (esLista(n) && n.childCount > 0) return false
 		// Un velo sin nombre que tapa la página web entera no es un control (CaixaBank)
-		if (accionable(n) && esVeloDePagina(n)) return false
-		if (accionable(n)) return true
-		// Una casilla suelta (sin fila pulsable que la lea) sí es una parada
-		if (n.isCheckable) return !antepasadoQueLee(n)
-		if (n.isFocusable && tieneTexto(n)) return true
-		if (rol == Rol.DESLIZADOR || rol == Rol.BARRA_PROGRESO || rol == Rol.IMAGEN && tieneTexto(n)) return true
-		if (!tieneTexto(n) && !esEncabezado(n)) return false
-		// Texto suelto: no si un antepasado pulsable lo va a leer como parte de él
-		return !antepasadoQueLee(n)
+		if (esVeloDePagina(n)) return false
+		// Algo vacío que no se pulsa y que la app no da como importante, o un encabezado sin texto (los separadores de
+		// categoría de los Ajustes): no dice nada, no es parada aunque se marque como parada o como encabezado
+		val vacio = !accionable(n) && !habla(n) && !esAjustable(n) && (!n.isImportantForAccessibility || esEncabezado(n))
+		if (vacio) return false
+		// Algo de tamaño cero y sin texto (las filas vacías que separan las categorías de los Ajustes de Android 16): no
+		// se ve ni dice nada, aunque se marque como pulsable
+		if (!aunqueNoSeVea && !tieneTexto(n) && limites(n).let { it.width() <= 0 || it.height() <= 0 }) return false
+		if (Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable) return true
+		if (comoLaVentana(n) && !tieneTexto(n)) return false
+		val rol = rol(n)
+		if (tomaFoco(n) || esFila(n)) {
+			val dentro = contenidoGuardado(n)
+			// El marco pulsable de una página entera y lo pulsable de una web con mucho texto no son parada si no dicen
+			// nada propio: lo son sus textos y sus controles, cada uno el suyo
+			if (esMarcoDePagina(n, dentro)) return false
+			if (contenedorWebLargo(n) && !tieneTexto(n)) return false
+			// Con el texto de dentro por separado: algo que se pulsa y no dice nada por sí mismo (ni texto, ni estado, ni
+			// es un encabezado o lo seleccionado) no es parada; lo son sus textos
+			if (textoDentroAparte && accionable(n) && !tieneTexto(n) && !n.isCheckable && !n.isEditable && !n.isSelected &&
+				!esEncabezado(n) && textoHijos(n, 200).isNotBlank()) return false
+			// Sin hijos que se vean, siempre (un botón sin etiqueta se dice «sin nombre», como en TalkBack); algo que solo es
+			// enfocable y no dice nada, no
+			if (!tieneHijosVisibles(n)) return accionable(n) || tieneTexto(n) || n.isCheckable || esAjustable(n) ||
+				(Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable)
+			// Con hijos: si habla (por sí o por lo de dentro que no es parada); si no, solo envuelve otros controles
+			return habla(n)
+		}
+		val suelto = tieneTexto(n) || n.isCheckable || rol == Rol.DESLIZADOR || rol == Rol.BARRA_PROGRESO || (esEncabezado(n) && habla(n))
+		if (!suelto) return false
+		// Texto suelto: no si una parada de encima lo lee como parte de ella
+		return lectorDe(n) == null
+	}
+
+	private fun tieneHijosVisibles(n: AccessibilityNodeInfo): Boolean {
+		for (i in 0 until n.childCount) {
+			val h = runCatching { n.getChild(i) }.getOrNull() ?: continue
+			if (h.isVisibleToUser) return true
+		}
+		return false
+	}
+
+	/**
+	 * La parada que lee a [n]: el primer antepasado que es parada y lee lo de dentro, sin límite de niveles (una lista
+	 * corta la subida: no lee a sus filas). Un encabezado sin texto propio (la fila de una categoría de ajustes) lee su
+	 * texto de dentro. Null si nadie lo lee: entonces [n], si habla, es su propia parada.
+	 */
+	fun lectorDe(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		var p = runCatching { n.parent }.getOrNull()
+		var nivel = 0
+		while (p != null && nivel < PROFUNDIDAD_MAXIMA) {
+			// Una lista no lee a sus filas, aunque la app la haga mantenible: en «Reenviar a» de WhatsApp las filas
+			// son casillas que no se pulsan solas, y se leía la lista entera de una vez, encabezados incluidos
+			if (esLista(p)) return null
+			// (en una web, aunque no se vea: lo de fuera de la pantalla también son paradas, y un enlace de más abajo lee
+			// su texto igual que si se viera)
+			val aLaVista = p.isVisibleToUser || rolChrome(p) != null
+			if (aLaVista) {
+				if (Build.VERSION.SDK_INT >= 28 && p.isScreenReaderFocusable) return p
+				if (paradaQueLee(p) && esParada(p, !p.isVisibleToUser)) return p
+				if (esEncabezado(p) && !tieneTexto(p)) return p
+			}
+			p = runCatching { p!!.parent }.getOrNull()
+			nivel++
+		}
+		return null
+	}
+
+	/** Si [n] recibe el foco al navegar. Es [esParada]: se queda con este nombre porque lo usan el lector y las pruebas. */
+	fun recibeFoco(n: AccessibilityNodeInfo, aunqueNoSeVea: Boolean = false): Boolean {
+		olvidar(false)
+		return esParada(n, aunqueNoSeVea)
+	}
+
+	/** Si algún antepasado es una parada que leerá a [n] con ella. */
+	fun antepasadoQueLee(n: AccessibilityNodeInfo): Boolean {
+		olvidar(false)
+		return lectorDe(n) != null
 	}
 
 	/**
@@ -235,35 +471,6 @@ object Nodos {
 		val v = android.graphics.Rect()
 		ventana.getBoundsInScreen(v)
 		return if (r.intersect(v)) r else android.graphics.Rect()
-	}
-
-	/** Si algún antepasado (hasta la colección o la ventana) es un control que leerá a [n] con él. */
-	fun antepasadoQueLee(n: AccessibilityNodeInfo): Boolean {
-		var p = runCatching { n.parent }.getOrNull()
-		var nivel = 0
-		while (p != null && nivel < 12) {
-			// Una lista no lee a sus filas, aunque la app la haga mantenible: en «Reenviar a» de WhatsApp las filas
-			// son casillas que no se pulsan solas, y se leía la lista entera de una vez, encabezados incluidos
-			if (esLista(p)) return false
-			if (Build.VERSION.SDK_INT >= 28 && p.isScreenReaderFocusable) return true
-			// Un control lo lee solo si de verdad es una parada que llega hasta él: no si solo envuelve controles (lo
-			// que se decide mirando unos pocos niveles), ni si es el marco pulsable de una página entera, ni si [n]
-			// está más hondo de lo que lee. En una noticia (oem.com.mx, Chrome) toda la página iba dentro de un
-			// marco pulsable con los párrafos muy abajo: el marco no era parada, pero «leía» los párrafos, así que
-			// nadie los leía y al deslizar se saltaban hasta la barra de Chrome
-			// (en una web, aunque no se vea: lo de fuera de la pantalla también son paradas, y un enlace de más abajo lee
-			// su texto igual que si se viera)
-			val aLaVista = p.isVisibleToUser || rolChrome(p) != null
-			if (accionable(p) && aLaVista && !textoDentroAparte) {
-				if (nivel < NIVELES_LECTURA && !soloAgrupa(p) && !esMarcoDePagina(p, contenido(p)) && !contenedorWebLargo(p)) return true
-			}
-			// Un encabezado sin texto propio (la fila de una categoría de ajustes) se lee con su texto dentro:
-			// una sola parada, no el encabezado y luego su texto otra vez
-			if (esEncabezado(p) && !tieneTexto(p) && aLaVista) return true
-			p = runCatching { p!!.parent }.getOrNull()
-			nivel++
-		}
-		return false
 	}
 
 	/**
@@ -286,30 +493,21 @@ object Nodos {
 			clase == "android.widget.AbsListView"
 	}
 
-	/** El primer antepasado de [n] (o él mismo) que recibe el foco: el que se lee al tocar. */
+	/**
+	 * El primero de [n] hacia arriba que es parada: el que se lee al tocar (`findFocusFromHover` de TalkBack, con la
+	 * misma regla que el recorrido, así que lo tocado siempre está en el orden y el siguiente deslizamiento sigue desde
+	 * ahí). Una página web no: lo es lo de dentro.
+	 */
 	fun enfocable(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		olvidar(false)
 		var actual: AccessibilityNodeInfo? = n
 		var nivel = 0
-		var candidato: AccessibilityNodeInfo? = null
-		while (actual != null && nivel < 15) {
-			// Una lista con filas no es una parada aunque la app la haga mantenible (la de «Reenviar a» de WhatsApp):
-			// al tocar una fila se enfoca la fila, no la lista entera, que se leía de una vez (Dharius, Cronopio)
-			if (esLista(actual) && actual.childCount > 0) {
-				if (candidato != null) return candidato
-				actual = runCatching { actual!!.parent }.getOrNull()
-				nivel++
-				continue
-			}
-			if (!soloAgrupa(actual) && !esMarcoDePagina(actual, contenido(actual)) && !esVeloDePagina(actual) && !contenedorWebLargo(actual)) {
-				if (accionable(actual) && actual.isVisibleToUser) return actual
-				if (candidato == null && recibeFoco(actual)) candidato = actual
-				// Con el texto de dentro por separado, al tocar un texto se enfoca ese texto, no la fila
-				if (textoDentroAparte && candidato != null) return candidato
-			}
+		while (actual != null && nivel < PROFUNDIDAD_MAXIMA) {
+			if (rol(actual) != Rol.WEB && esParada(actual, rolChrome(actual) != null)) return actual
 			actual = runCatching { actual!!.parent }.getOrNull()
 			nivel++
 		}
-		return candidato
+		return null
 	}
 
 	/** Lo que hay directamente dentro de un control: otros controles y textos sueltos (lo de dentro de esos controles es suyo). */
@@ -323,6 +521,13 @@ object Nodos {
 			if (d.varios && d.textos > 0) return
 			val h = runCatching { n.getChild(i) }.getOrNull() ?: continue
 			if (!h.isVisibleToUser) continue
+			// El mensaje citado de una respuesta (WhatsApp) se pulsa para ir al original, pero es parte del mensaje: cuenta
+			// como texto. Si contaba como control, la fila «agrupaba controles» y la cita era su propia parada, delante de
+			// la respuesta (Cronopio, tras la 1.0.18)
+			if (esCita(h)) {
+				d.textos++
+				continue
+			}
 			if (accionable(h) || esParadaSuelta(h)) {
 				d.controles++
 				continue
@@ -422,7 +627,8 @@ object Nodos {
 	 * lista, botones con texto dentro), sin los hijos que reciben el foco por su
 	 * cuenta. Como hace TalkBack con la descripción del árbol.
 	 */
-	fun textoHijos(n: AccessibilityNodeInfo, maximo: Int = 3000): String {
+	fun textoHijos(n: AccessibilityNodeInfo, maximo: Int = 10_000): String {
+		olvidar(false)
 		val sb = StringBuilder()
 		val dichos = HashSet<String>()
 		// Los controles de dentro de un contenedor que los agrupa son paradas propias: no se leen con él
@@ -432,7 +638,10 @@ object Nodos {
 		// (y los de algo que está entero fuera de la vista: la celda de una tabla web más ancha que la pantalla)
 		val citas = ArrayList<AccessibilityNodeInfo>()
 		val ocultos = aMedias(n) || !n.isVisibleToUser
-		textoHijos(n, sb, 0, maximo, ocultos, dichos, sinControles, citas)
+		// La caja de la fila: lo de dentro que no se ve pero cae dentro de ella está tapado (por la barra de navegación, en
+		// las apps de borde a borde), no fuera de la pantalla, y se lee (SandFly e6502d617: si no, la fila se decía a medias)
+		val caja = if (n.isVisibleToUser) limites(n) else null
+		textoHijos(n, sb, 0, maximo, ocultos, dichos, sinControles, citas, caja)
 		// Una fila medio fuera de la pantalla (al final de una lista que aún se está desplazando) tiene
 		// sus textos todavía sin ver: antes que «sin nombre», se leen aunque no se vean
 		if (sb.isBlank() && n.isVisibleToUser && citas.isEmpty()) textoHijos(n, sb, 0, maximo, true, dichos, sinControles, citas)
@@ -463,20 +672,21 @@ object Nodos {
 
 	private fun textoHijos(
 		n: AccessibilityNodeInfo, sb: StringBuilder, nivel: Int, maximo: Int, ocultos: Boolean, dichos: MutableSet<String>, sinControles: Boolean,
-		citas: MutableList<AccessibilityNodeInfo>?,
+		citas: MutableList<AccessibilityNodeInfo>?, caja: Rect? = null,
 	) {
-		if (nivel > 8 || sb.length > maximo) return
+		if (nivel > PROFUNDIDAD_MAXIMA || sb.length > maximo) return
 		for (i in 0 until n.childCount) {
 			val hijo = runCatching { n.getChild(i) }.getOrNull() ?: continue
-			if (!ocultos && !hijo.isVisibleToUser) continue
+			if (!ocultos && !hijo.isVisibleToUser && (caja == null || !Rect.intersects(caja, limites(hijo)))) continue
 			// La cita de un mensaje que responde a otro (WhatsApp) va delante en la fila: se guarda para el final
 			if (citas != null && esCita(hijo)) {
 				citas.add(hijo)
 				continue
 			}
-			// Un hijo que es un control con nombre propio (un botón «Borrar» en una fila) se lee aparte
-			if (accionable(hijo) && (sinControles || esControlIndependiente(hijo))) continue
-			if (esParadaSuelta(hijo)) continue
+			// Lo que es parada por su cuenta (un botón «Borrar» en una fila, un «Me gusta» que se pulsa dentro de una tarjeta
+			// que también se pulsa) se lee aparte: con la regla única, cada texto lo lee una sola parada
+			if (tomaFoco(hijo) || esParadaSuelta(hijo)) continue
+			if (sinControles && accionable(hijo)) continue
 			val propio = when {
 				hijo.isPassword -> hijo.contentDescription
 				!hijo.contentDescription.isNullOrBlank() -> hijo.contentDescription
@@ -490,7 +700,7 @@ object Nodos {
 				if (sb.isNotEmpty()) sb.append(", ")
 				sb.append(propio)
 				if (Build.VERSION.SDK_INT >= 30) hijo.stateDescription?.takeIf { it.isNotBlank() }?.let { sb.append(", ").append(it) }
-			} else textoHijos(hijo, sb, nivel + 1, maximo, ocultos, dichos, sinControles, citas)
+			} else textoHijos(hijo, sb, nivel + 1, maximo, ocultos, dichos, sinControles, citas, caja)
 		}
 	}
 
@@ -498,23 +708,6 @@ object Nodos {
 	private fun esCita(n: AccessibilityNodeInfo): Boolean {
 		val id = n.viewIdResourceName ?: return false
 		return id.endsWith(":id/quoted_message_holder") && (id.startsWith("com.whatsapp"))
-	}
-
-	/**
-	 * Un control dentro de una fila que tiene su propio nombre (un botón «Borrar» en una fila de lista). También una
-	 * imagen que se pulsa por sí misma y tiene descripción: la foto de un chat de WhatsApp («Foto de Ana») abre el
-	 * perfil y la fila abre el chat, así que son dos paradas, como en TalkBack (antes se leía «Foto de Ana. Ana: Hola»).
-	 */
-	private fun esControlIndependiente(n: AccessibilityNodeInfo): Boolean {
-		val clase = n.className?.toString().orEmpty()
-		return n.isCheckable || n.isEditable || clase.endsWith("Button") || clase.endsWith("ImageButton") || clase.endsWith("Switch") || clase.endsWith("CheckBox") ||
-			(clase.endsWith("ImageView") && !n.contentDescription.isNullOrBlank() && accionable(n)) || esParadaSuelta(n) ||
-			// Un deslizador dentro de una fila o una tarjeta que se pulsa (el volumen de una alarma, el precio de un filtro):
-			// es su propia parada. Si no, el foco se quedaba en la fila y arriba y abajo no lo cambiaban (Dharius, Blue-Sky)
-			(esAjustable(n) && n.isVisibleToUser) ||
-			// El «Leer más» de un mensaje largo de WhatsApp es un botón virtual dentro del texto: su propia parada, como
-			// en TalkBack (Cronopio: no se podía encontrar ni pulsar)
-			esBotonLeerMas(n)
 	}
 
 	/** «Leer más», «Ver más», «Read more»...: lo que abre el resto de un mensaje o de un texto largo. */
@@ -607,19 +800,67 @@ object Nodos {
 				Build.VERSION.SDK_INT >= 28 && n.isScreenReaderFocusable && tieneTexto(n))
 
 	/**
-	 * Los nodos que reciben el foco en la ventana de [raiz], en orden de lectura
-	 * (el del árbol, que es el de las apps bien hechas; respeta
-	 * `accessibilityTraversalBefore/After` en la medida en que Android lo aplica al árbol).
+	 * Los nodos que reciben el foco en la ventana de [raiz], en orden de lectura: el del árbol, con lo que pida la app
+	 * con `accessibilityTraversalBefore/After` ([reordenarPorRecorrido]).
 	 */
 	fun ordenLectura(raiz: AccessibilityNodeInfo, maximo: Int = 6000, agrupa: ((AccessibilityNodeInfo) -> Boolean)? = null): List<AccessibilityNodeInfo> {
 		val lista = ArrayList<AccessibilityNodeInfo>()
 		largosWeb.clear()
+		olvidar(true)
 		try {
 			recorrer(raiz, lista, 0, maximo, agrupa, repartir = true)
+			reordenarPorRecorrido(lista)
 		} catch (e: Exception) {
 			Registro.w(ETIQUETA, "Fallo al recorrer la ventana", e)
 		}
 		return sinRepetidos(lista)
+	}
+
+	/**
+	 * Las paradas de dentro de [contenedor], también las que están fuera de la vista (para un `ScrollView`, que tiene en el
+	 * árbol todo su contenido aunque no se vea), en orden.
+	 */
+	fun paradasDe(contenedor: AccessibilityNodeInfo, maximo: Int = 2000): List<AccessibilityNodeInfo> {
+		val lista = ArrayList<AccessibilityNodeInfo>()
+		olvidar(true)
+		try {
+			recorrer(contenedor, lista, 0, maximo, null, fueraDeLaVista = true)
+		} catch (e: Exception) {
+			Registro.w(ETIQUETA, "Fallo al recorrer un contenedor", e)
+		}
+		return lista
+	}
+
+	/**
+	 * Aplica el orden que pide la app con `accessibilityTraversalBefore` y `accessibilityTraversalAfter` (lo que usan
+	 * Compose para el orden visual y las apps que arreglan su orden de lectura): cada parada que lo pide (con las suyas de
+	 * dentro) se mueve justo antes de la parada que nombra, o justo después, como `OrderedTraversalController` de
+	 * TalkBack. Antes se ignoraba: la barra de abajo o el botón flotante podían leerse antes que el contenido.
+	 */
+	private fun reordenarPorRecorrido(lista: MutableList<AccessibilityNodeInfo>) {
+		if (Build.VERSION.SDK_INT < 22 || lista.size < 2) return
+		var movidas = 0
+		for (n in lista.toList()) {
+			if (movidas >= 60) break
+			val antes = runCatching { n.traversalBefore }.getOrNull()
+			val despues = if (antes == null) runCatching { n.traversalAfter }.getOrNull() else null
+			val ref = antes ?: despues ?: continue
+			if (ref == n || dentroDe(ref, n)) continue
+			val i = lista.indexOf(n)
+			if (i < 0) continue
+			var fin = i + 1
+			while (fin < lista.size && dentroDe(lista[fin], n)) fin++
+			val bloque = ArrayList(lista.subList(i, fin))
+			lista.subList(i, fin).clear()
+			val donde = if (antes != null) lista.indexOfFirst { it == ref || dentroDe(it, ref) }
+				else lista.indexOfLast { it == ref || dentroDe(it, ref) }.let { if (it >= 0) it + 1 else -1 }
+			if (donde < 0) {
+				lista.addAll(i, bloque)
+				continue
+			}
+			lista.addAll(donde, bloque)
+			movidas++
+		}
 	}
 
 	/**
@@ -689,22 +930,12 @@ object Nodos {
 			lista += n
 			return
 		}
-		val foco = recibeFoco(n, fueraDeLaVista || enWeb)
-		val dentro = if (foco) contenido(n) else null
-		// Algo pulsable de una web que no es un control (un div con onclick) y lleva mucho texto dentro (la respuesta de
-		// un chat de IA, una noticia entera): no lee a sus hijos, que son paradas uno a uno (SandFly WebTreeOrder)
-		val largoWeb = foco && contenedorWebLargo(n)
-		// Con el texto de dentro por separado: algo que se pulsa y no dice nada por sí mismo (ni texto, ni estado, ni es un
-		// encabezado o lo seleccionado) no es parada; lo son sus textos
-		val sinPropio = foco && textoDentroAparte && accionable(n) && !tieneTexto(n) && !n.isCheckable && !n.isEditable &&
-			!n.isSelected && !esEncabezado(n) && textoHijos(n, 200).isNotBlank()
-		val soloEnvuelve = foco && (sinNadaQueDecir(n, dentro) || esMarcoDePagina(n, dentro) || largoWeb && !tieneTexto(n) || sinPropio)
-		if (foco && !soloEnvuelve) lista += n
-		// Un control con texto dentro: sus hijos se leen con él, no aparte (salvo controles propios dentro;
-		// y si agrupa varios controles, o solo los envuelve sin decir nada, cada uno es su propia parada)
-		val leeHijos = foco && !soloEnvuelve && accionable(n) && dentro?.varios != true && !largoWeb && !textoDentroAparte
+		// La regla única: si es parada, entra; y se baja siempre por todos los hijos, sin tirar ramas (lo de dentro que no
+		// es parada lo lee la parada de encima; lo que sí lo es, se recorre aunque esté muy hondo)
+		if (esParada(n, fueraDeLaVista || enWeb)) lista += n
 		val hijos = (0 until n.childCount).mapNotNull { i -> runCatching { n.getChild(i) }.getOrNull() }
-			.filter { hijo -> !(leeHijos && !esControlIndependiente(hijo) && !tieneControlDentro(hijo)) }
+			// Si la cita de una respuesta acaba siendo su propia parada, va detrás de la respuesta, como se lee la fila
+			.let { h -> if (h.size > 1 && h.any { esCita(it) }) h.sortedBy { esCita(it) } else h }
 		val filaConCeldas = !fueraDeLaVista && !enWeb && hijos.any { it.isVisibleToUser && esCeldaWeb(it) }
 		fun fuera(hijo: AccessibilityNodeInfo) = fueraDeLaVista || (filaConCeldas && !hijo.isVisibleToUser && esCeldaWeb(hijo))
 		// Muchos hijos (una lista larga, la persiana): cada rama en un hilo, y se juntan en su orden
@@ -803,16 +1034,6 @@ object Nodos {
 	private fun esCeldaWeb(n: AccessibilityNodeInfo): Boolean =
 		n.collectionItemInfo != null && runCatching { n.extras?.getCharSequence("AccessibilityNodeInfo.chromeRole") }.getOrNull() != null
 
-	private fun tieneControlDentro(n: AccessibilityNodeInfo, nivel: Int = 0): Boolean {
-		if (nivel > 4) return false
-		for (i in 0 until n.childCount) {
-			val h = runCatching { n.getChild(i) }.getOrNull() ?: continue
-			if (esControlIndependiente(h) && h.isVisibleToUser) return true
-			if (tieneControlDentro(h, nivel + 1)) return true
-		}
-		return false
-	}
-
 	/** El antepasado desplazable más cercano de [n] (para desplazar la lista en la que está). */
 	fun desplazable(n: AccessibilityNodeInfo, alSeguir: Boolean = false): AccessibilityNodeInfo? {
 		var p: AccessibilityNodeInfo? = n
@@ -869,6 +1090,9 @@ object Nodos {
 	 */
 	fun seSigueDesplazando(n: AccessibilityNodeInfo): Boolean {
 		if (n.isEditable || esSelectorDeRueda(n)) return false
+		// La página web no: lo de fuera de la pantalla ya es parada y Chrome lo trae a la vista al enfocarlo; pasarla por
+		// páginas se saltaba lo que aún no estaba cargado (TalkBack FILTER_AUTO_SCROLL_ANY_ROLE)
+		if (n.className?.toString()?.endsWith("WebView") == true) return false
 		val r = rol(n)
 		if (r == Rol.PAGINADOR || r == Rol.LISTA_PESTANAS) return false
 		val ids = n.actionList.map { it.id }

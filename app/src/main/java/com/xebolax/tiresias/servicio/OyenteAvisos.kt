@@ -70,12 +70,11 @@ class OyenteAvisos : NotificationListenerService() {
 		return n.flags and fuera == 0
 	}
 
-	private fun firma(n: Notification?): String {
-		val e = n?.extras ?: return ""
-		val titulo = e.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-		val texto = (e.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: e.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()
-		return "$titulo|$texto".trim('|')
-	}
+	/**
+	 * Lo que dice la notificación, para no repetir lo que no cambia: también las que solo traen las líneas de la
+	 * bandeja de entrada, el subtexto o su diseño propio (antes, sin título ni texto, no se leían nunca).
+	 */
+	private fun firma(n: Notification?): String = com.xebolax.tiresias.lectura.Avisos.firma(n)
 
 	companion object {
 		private const val ETIQUETA = "OyenteAvisos"

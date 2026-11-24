@@ -15,6 +15,8 @@ import com.xebolax.tiresias.ia.AsistenteIA
 import com.xebolax.tiresias.ia.Nano
 import com.xebolax.tiresias.lectura.Lector
 import com.xebolax.tiresias.nucleo.PropuestaIA
+import com.xebolax.tiresias.recursos.ModelosTraduccion
+import com.xebolax.tiresias.traduccion.Traduccion
 import com.xebolax.tiresias.ventanas.Ventanas
 import com.xebolax.tiresias.voz.Modo
 import com.xebolax.tiresias.voz.Sonido
@@ -357,6 +359,44 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 	}
 
 	/** Compartir la descripción, la imagen o las dos (Can Talk), con la hoja de compartir de Android. */
+	/**
+	 * Comparte la imagen de lo enfocado ([soloFoco]) o la captura de la pantalla entera, sin pasar por la IA (SandFly
+	 * 95a372c25): para mandar a alguien lo que hay en la pantalla. Se guardan las tres últimas.
+	 */
+	fun compartirImagen(soloFoco: Boolean): Boolean {
+		if (!necesitaCaptura()) return false
+		val zona = if (soloFoco) lector.foco?.let { Nodos.limites(it) } else null
+		if (soloFoco && zona == null) {
+			lector.decir(R.string.sin_foco)
+			return false
+		}
+		espera.empezar()
+		trabajo.execute {
+			try {
+				val captura = capturar() ?: run {
+					val motivo = motivoSinCaptura()
+					lector.manejador.post { lector.decir(motivo) }
+					return@execute
+				}
+				val imagen = zona?.let { recortar(captura, it) } ?: captura
+				val carpeta = File(servicio.cacheDir, "compartir").apply { mkdirs() }
+				// Las tres últimas: las de antes se borran
+				carpeta.listFiles { f -> f.name.startsWith("imagen_") }?.sortedByDescending { it.lastModified() }?.drop(2)?.forEach { it.delete() }
+				val f = File(carpeta, "imagen_${System.currentTimeMillis()}.jpg")
+				FileOutputStream(f).use { imagen.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+				if (imagen !== captura) imagen.recycle()
+				captura.recycle()
+				lector.manejador.post { compartir(null, f) }
+			} catch (e: Exception) {
+				Registro.e(ETIQUETA, "No se pudo preparar la imagen para compartir", e)
+				lector.manejador.post { lector.decir(R.string.compartir_no) }
+			} finally {
+				espera.parar()
+			}
+		}
+		return true
+	}
+
 	private fun elegirQueCompartir(texto: String, imagen: File?) {
 		if (imagen == null) {
 			compartir(texto, null)
@@ -540,7 +580,7 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 
 	// --- Traducir ------------------------------------------------------------------------
 
-	/** Traduce el texto del elemento enfocado al idioma de Tiresias con la IA elegida (solo el texto, sin captura). */
+	/** Traduce el texto del elemento enfocado al idioma de Tiresias, sin conexión o con la IA elegida (solo el texto, sin captura). */
 	fun traducir(): Boolean {
 		val f = lector.foco ?: return false
 		if (f.isPassword) {
@@ -574,15 +614,58 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 		}
 	}
 
-	/** Pide la traducción de [texto] a la IA (con su confirmación) y da la respuesta a [alResponder] en el hilo del lector. */
+	/**
+	 * Traduce [texto] al idioma de Tiresias y da la traducción a [alResponder]
+	 * en el hilo del lector: sin conexión si hay un traductor descargado que
+	 * sirva ([Traduccion], nada sale del móvil); si no, con la IA elegida.
+	 */
 	private fun traducirCon(texto: String, alResponder: (String) -> Unit): Boolean {
+		val destino = com.xebolax.tiresias.base.Idioma.efectivo(servicio)
+		val empezada = java.util.concurrent.atomic.AtomicBoolean(false)
+		trabajo.execute {
+			val resultado = try {
+				Traduccion.traducir(servicio, texto, destino) {
+					empezada.set(true)
+					lector.manejador.post {
+						espera.empezar()
+						lector.decir(R.string.traduccion_traduciendo)
+					}
+				}
+			} catch (e: Exception) {
+				Registro.e(ETIQUETA, "No se pudo traducir sin conexión", e)
+				null
+			}
+			lector.manejador.post {
+				if (empezada.get()) espera.parar()
+				when (resultado) {
+					is Traduccion.Resultado.Traducido -> alResponder(resultado.texto.trim())
+					is Traduccion.Resultado.MismoIdioma -> lector.decir(R.string.traduccion_mismo_idioma, Traduccion.nombre(resultado.idioma, destino))
+					is Traduccion.Resultado.SinModelo -> traducirConIA(texto, destino, resultado.origen, alResponder)
+					null -> lector.decir(R.string.traduccion_error)
+				}
+			}
+		}
+		return true
+	}
+
+	/**
+	 * Pide la traducción de [texto] a la IA (con su confirmación) y da la
+	 * respuesta a [alResponder] en el hilo del lector. Si no hay IA, invita a
+	 * descargar el traductor sin conexión ([origen]: el idioma del texto, si se sabe).
+	 */
+	private fun traducirConIA(texto: String, destino: java.util.Locale, origen: String?, alResponder: (String) -> Unit) {
 		val proveedor = AsistenteIA.elegir(servicio) ?: run {
-			lector.decir(R.string.ia_sin_configurar)
-			return false
+			when {
+				origen == null -> lector.decir(R.string.traduccion_sin_nada)
+				ModelosTraduccion.de(origen, destino.language) != null ->
+					lector.decir(R.string.traduccion_falta_par, Traduccion.nombre(origen, destino), Traduccion.nombre(destino.language, destino))
+				else -> lector.decir(R.string.ia_sin_configurar)
+			}
+			return
 		}
 		if (proveedor == AsistenteIA.Proveedor.MOVIL) {
 			lector.decir(R.string.actuar_sin_nano)
-			return false
+			return
 		}
 		confirmarEnvio(proveedor) {
 			espera.empezar()
@@ -602,7 +685,6 @@ class Vision(private val lector: Lector, private val ventanas: Ventanas) {
 				}
 			}
 		}
-		return true
 	}
 
 	// --- Pedir a la IA que haga algo (con confirmación) -------------------------------------

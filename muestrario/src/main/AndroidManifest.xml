@@ -54,6 +54,10 @@
 			android:exported="true"
 			android:label="Muestrario alarma" />
 		<activity
+			android:name=".ActividadTarjetas"
+			android:exported="true"
+			android:label="Muestrario tarjetas" />
+		<activity
 			android:name=".ActividadMalHecha"
 			android:exported="true"
 			android:label="Mal hecha" />

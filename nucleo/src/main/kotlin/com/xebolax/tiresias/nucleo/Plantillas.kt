@@ -19,6 +19,10 @@ enum class Frase {
 	MARCADO, NO_MARCADO, PARCIAL, ACTIVADO, DESACTIVADO, SELECCIONADO, NO_DISPONIBLE,
 	EXPANDIDO, CONTRAIDO, EXPANDIDO_PARCIAL, OBLIGATORIO, ENLACE_VISITADO, EDITANDO, PULSADO, NO_PULSADO,
 	CARGANDO,
+	/** Un campo de texto que no se puede escribir. */
+	SOLO_LECTURA,
+	/** Una celda de encabezado de una tabla: de columna o de fila. */
+	ENCABEZADO_COLUMNA, ENCABEZADO_FILA,
 
 	// Con marcadores
 	/** `%1$s`: el texto del error. */

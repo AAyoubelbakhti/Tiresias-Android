@@ -19,7 +19,8 @@ object TextosPrueba : Plantillas {
 		Frase.TIENE_ACCIONES to "con acciones", Frase.PANEL to "%1\$s", Frase.PISTA_PULSAR to "Toca dos veces para activar.",
 		Frase.PISTA_EDITAR to "Toca dos veces para escribir.", Frase.PISTA_ALTERNAR to "Toca dos veces para cambiar.",
 		Frase.PISTA_ACCIONES to "Toca con tres dedos para ver sus acciones.", Frase.PISTA_ACCIONES_GESTO to "%1\$s para ver sus acciones.",
-		Frase.PISTA_LEVANTAR to "Levanta el dedo para activar.",
+		Frase.PISTA_LEVANTAR to "Levanta el dedo para activar.", Frase.PISTA_EXPANDIR to "Toca dos veces para expandir.",
+		Frase.SOLO_LECTURA to "solo lectura", Frase.ENCABEZADO_COLUMNA to "encabezado de columna", Frase.ENCABEZADO_FILA to "encabezado de fila",
 		Frase.PISTA_ACCIONES_ARRIBA_ABAJO to "Desliza arriba o abajo para elegir una acción y toca dos veces para hacerla.",
 	)
 

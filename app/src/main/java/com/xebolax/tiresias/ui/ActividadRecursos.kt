@@ -20,8 +20,10 @@ import com.xebolax.tiresias.base.Ajustes
 import com.xebolax.tiresias.base.Registro
 import com.xebolax.tiresias.ia.ModeloLocal
 import com.xebolax.tiresias.ia.Nano
+import com.xebolax.tiresias.recursos.ModelosTraduccion
 import com.xebolax.tiresias.recursos.Recursos
 import com.xebolax.tiresias.recursos.VocesNeuronales
+import com.xebolax.tiresias.traduccion.Traduccion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +62,14 @@ class ActividadRecursos : ActividadBase() {
 		p.encabezado(getString(R.string.rec_cat_lectura))
 		recurso(Recursos.OCR)
 		recurso(Recursos.VOSK_ES)
+
+		p.encabezado(getString(R.string.rec_cat_traduccion))
+		p.parrafo(getString(R.string.rec_traduccion_explicacion))
+		val idiomaPantalla = resources.configuration.locales[0]
+		for (m in ModelosTraduccion.CATALOGO) {
+			val titulo = getString(R.string.rec_traductor_nombre, Traduccion.nombre(m.origen, idiomaPantalla), Traduccion.nombre(m.destino, idiomaPantalla))
+			recurso(m.recurso, titulo)
+		}
 
 		p.encabezado(getString(R.string.rec_cat_voces))
 		p.parrafo(getString(R.string.rec_voces_explicacion))

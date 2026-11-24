@@ -7,7 +7,7 @@ El manual de uso completo está dentro de la app (menú lateral, Manual de uso) 
 ## Lo esencial
 
 - **Se activa** en Ajustes del sistema, Accesibilidad, Tiresias. Si Android dice que el ajuste está restringido: información de la app, Más opciones, «Permitir ajustes restringidos».
-- **Gestos** compatibles con TalkBack. Triple toque y mantener con cuatro dedos activa siempre el **modo seguro**. Las dos teclas de volumen a la vez suspenden o reanudan Tiresias.
+- **Gestos** compatibles con TalkBack. Doble toque y mantener con cuatro dedos activa siempre el **modo seguro**. Las dos teclas de volumen a la vez suspenden o reanudan Tiresias.
 - **Voces** sin Internet: eSpeak NG, Pico y Eloquence (menos en x86 de 32 bits), más las voces neuronales Piper que se descargan aparte y las del sistema. Cada voz guarda su velocidad, su tono y su volumen.
 - **Braille**: teclado en pantalla, y líneas HID por USB o Bluetooth con Android 15 o posterior.
 - **Descargas** opcionales: voces Piper, OCR (PaddleOCR), dictado (Vosk), IA en el móvil (Gemma 4) y el complemento Gemini Nano.

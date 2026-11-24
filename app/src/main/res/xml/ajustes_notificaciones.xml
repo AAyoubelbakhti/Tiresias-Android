@@ -16,4 +16,8 @@
 	<Preference app:key="ordenar_estado" app:title="@string/ordenar_estado_titulo" app:summary="@string/ordenar_estado_res" />
 	<SwitchPreferenceCompat app:key="al_apagar" app:title="@string/aj_al_apagar" app:summary="@string/aj_al_apagar_res" app:defaultValue="false" />
 	<SwitchPreferenceCompat app:key="guarda_activa" app:title="@string/aj_guarda" app:summary="@string/aj_guarda_res" app:defaultValue="true" />
+	<SwitchPreferenceCompat app:key="avisos_pantalla_con_multimedia" app:title="@string/aj_pantalla_multimedia" app:summary="@string/aj_pantalla_multimedia_res" app:defaultValue="true" />
+	<ListPreference app:key="aviso_nivel_bateria" app:title="@string/aj_nivel_bateria" app:entries="@array/nivel_bateria_nombres" app:entryValues="@array/nivel_bateria_valores" app:defaultValue="no" app:useSimpleSummaryProvider="true" />
+	<ListPreference app:key="bateria_baja" app:title="@string/aj_bateria_baja" app:entries="@array/bateria_baja_nombres" app:entryValues="@array/bateria_baja_valores" app:defaultValue="15" app:useSimpleSummaryProvider="true" />
+	<SwitchPreferenceCompat app:key="duracion_llamada" app:title="@string/aj_duracion_llamada" app:summary="@string/aj_duracion_llamada_res" app:defaultValue="false" app:isPreferenceVisible="@bool/sistema_android_12" />
 </PreferenceScreen>

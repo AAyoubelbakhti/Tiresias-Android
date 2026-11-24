@@ -5,6 +5,10 @@
 	<Preference app:key="ordenar_controles" app:title="@string/ordenar_controles_titulo" app:summary="@string/ordenar_controles_res" />
 	<SwitchPreferenceCompat app:key="deslizador_arriba_abajo" app:title="@string/aj_deslizador_arriba_abajo" app:summary="@string/aj_deslizador_arriba_abajo_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="acciones_arriba_abajo" app:title="@string/aj_acciones_arriba_abajo" app:summary="@string/aj_acciones_arriba_abajo_res" app:defaultValue="true" />
+	<SwitchPreferenceCompat app:key="toque_activa" app:title="@string/senior_toque_activa" app:summary="@string/senior_toque_activa_res" app:defaultValue="false" />
+	<SwitchPreferenceCompat app:key="decir_posicion_desplazar" app:title="@string/aj_decir_posicion_desplazar" app:summary="@string/aj_decir_posicion_desplazar_res" app:defaultValue="true" />
+	<ListPreference app:key="agitar_sensibilidad" app:title="@string/aj_agitar_sensibilidad" app:entries="@array/agitar_sensibilidad_nombres" app:entryValues="@array/agitar_sensibilidad_valores" app:defaultValue="media" app:useSimpleSummaryProvider="true" />
+	<SwitchPreferenceCompat app:key="acciones_solas" app:title="@string/aj_acciones_solas" app:summary="@string/aj_acciones_solas_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="recordar_foco" app:title="@string/aj_recordar_foco" app:summary="@string/aj_recordar_foco_res" app:defaultValue="true" />
 	<SwitchPreferenceCompat app:key="dar_vuelta" app:title="@string/aj_dar_vuelta" app:summary="@string/aj_dar_vuelta_res" app:defaultValue="false" />
 	<SwitchPreferenceCompat app:key="texto_dentro_aparte" app:title="@string/aj_texto_dentro_aparte" app:summary="@string/aj_texto_dentro_aparte_res" app:defaultValue="false" />
@@ -25,4 +29,7 @@
 	<SwitchPreferenceCompat app:key="foco_sin_esperar_titulo" app:title="@string/aj_foco_sin_esperar_titulo" app:summary="@string/aj_foco_sin_esperar_titulo_res" app:defaultValue="false" />
 	<SwitchPreferenceCompat app:key="controles_solo_web" app:title="@string/aj_controles_solo_web" app:summary="@string/aj_controles_solo_web_res" app:defaultValue="true" />
 	<ListPreference app:key="activar_al_levantar" app:title="@string/aj_activar_al_levantar" app:entries="@array/activar_al_levantar_nombres" app:entryValues="@array/activar_al_levantar_valores" app:defaultValue="no" app:useSimpleSummaryProvider="true" />
+	<ListPreference app:key="recuadro_grosor" app:title="@string/aj_recuadro_grosor" app:entries="@array/recuadro_grosor_nombres" app:entryValues="@array/recuadro_grosor_valores" app:defaultValue="sistema" app:useSimpleSummaryProvider="true" app:isPreferenceVisible="@bool/sistema_android_12" />
+	<ListPreference app:key="recuadro_color" app:title="@string/aj_recuadro_color" app:entries="@array/recuadro_color_nombres" app:entryValues="@array/recuadro_color_valores" app:defaultValue="sistema" app:useSimpleSummaryProvider="true" app:isPreferenceVisible="@bool/sistema_android_12" />
+	<SwitchPreferenceCompat app:key="sin_animaciones" app:title="@string/aj_sin_animaciones" app:summary="@string/aj_sin_animaciones_res" app:defaultValue="false" app:isPreferenceVisible="@bool/sistema_android_13" />
 </PreferenceScreen>

@@ -3,6 +3,7 @@
 	<ListPreference app:key="motor" app:title="@string/aj_motor" app:useSimpleSummaryProvider="true" />
 	<Preference app:key="voces_sistema" app:title="@string/aj_voces_sistema" app:summary="@string/aj_voces_sistema_res" />
 	<Preference app:key="voces_control" app:title="@string/aj_voces_control" />
+	<ListPreference app:key="motor_otras_apps" app:title="@string/aj_motor_otras_apps" app:entries="@array/motor_otras_apps_nombres" app:entryValues="@array/motor_otras_apps_valores" app:defaultValue="igual" app:useSimpleSummaryProvider="true" />
 	<ListPreference app:key="motor_avisos" app:title="@string/aj_motor_avisos" app:useSimpleSummaryProvider="true" />
 	<Preference app:key="eloquence_ajustes" app:title="@string/aj_eloquence_ajustes" app:summary="@string/aj_eloquence_ajustes_res" />
 	<Preference app:key="probar_voz" app:title="@string/ui_probar_voz" />

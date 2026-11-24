@@ -29,7 +29,7 @@ Tiresias dice en voz alta lo que hay en la pantalla y deja manejar el móvil con
 - **Sin Google Play Services.** Ni Play Services, ni Firebase, ni analíticas. Funciona igual en un móvil sin servicios de Google, y se prueba en un emulador sin ellos. Lo único que usa algo de Google es opcional: el complemento de Gemini Nano.
 - **En español de verdad.** La interfaz, las frases del lector, los símbolos, los emojis y el manual están en español de España, y también en inglés. Traducirlo a otro idioma es cuestión de archivos de texto ([guía](docs/traducir.md)).
 - **Rápido.** Del gesto a la voz, unos 9 ms de mediana con la voz integrada, medido en el emulador. Prepara la frase del elemento siguiente antes de que la pidas y no hace nada lento en el hilo principal.
-- **Nunca te deja atrapado.** Triple toque y mantener con cuatro dedos activa siempre el modo seguro, y ningún ajuste, complemento ni modo lo puede quitar.
+- **Nunca te deja atrapado.** Doble toque y mantener con cuatro dedos activa siempre el modo seguro, y ningún ajuste, complemento ni modo lo puede quitar.
 - **Libre y privado.** Software libre (GPL 3 o posterior). No guarda, no registra y no envía nada de lo que lee.
 
 ---

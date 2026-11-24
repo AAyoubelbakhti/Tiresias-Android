@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lo nuevo de la 1.0.19. -->
+<resources>
+	<string name="aj_motor_otras_apps">Voz para otras apps y otros lectores</string>
+	<string-array name="motor_otras_apps_nombres">
+		<item>La misma que usa Tiresias</item>
+		<item>eSpeak NG</item>
+		<item>Eloquence</item>
+		<item>Pico</item>
+		<item>Voz neuronal descargada</item>
+	</string-array>
+	<string-array name="motor_otras_apps_valores" translatable="false">
+		<item>igual</item>
+		<item>espeak</item>
+		<item>eloquence</item>
+		<item>pico</item>
+		<item>piper</item>
+	</string-array>
+	<string name="aj_acciones_solas">Ir a Acciones al llegar a un elemento que las tiene</string>
+	<string name="aj_acciones_solas_res">Si estás en otro control que no es el predeterminado, el selector se pone solo en Acciones y vuelve al de antes al salir del elemento</string>
+	<string name="sin_foco">No hay nada enfocado</string>
+	<string name="sin_faltas">No hay faltas de ortografía</string>
+	<string name="control_frases">Frases</string>
+	<string name="control_opciones">Botones de opción</string>
+	<string name="control_desplegables">Desplegables</string>
+	<string name="control_elementos_lista">Elementos de lista</string>
+	<string name="control_enlaces_visitados">Enlaces visitados</string>
+	<string name="control_enlaces_sin_visitar">Enlaces sin visitar</string>
+	<string name="control_encabezados_1">Encabezados de nivel 1</string>
+	<string name="control_encabezados_2">Encabezados de nivel 2</string>
+	<string name="control_encabezados_3">Encabezados de nivel 3</string>
+	<string name="control_encabezados_4">Encabezados de nivel 4</string>
+	<string name="control_encabezados_5">Encabezados de nivel 5</string>
+	<string name="control_encabezados_6">Encabezados de nivel 6</string>
+	<string name="control_desplazar">Desplazar</string>
+	<string name="control_contenedores">Contenedores</string>
+	<string name="control_faltas">Faltas de ortografía</string>
+	<string name="accion_boton_confirmar">Pulsar el botón de aceptar</string>
+	<string name="accion_boton_cancelar">Pulsar el botón de cancelar</string>
+	<string name="accion_compartir_imagen">Compartir la imagen de lo enfocado</string>
+	<string name="accion_compartir_captura">Compartir una captura de la pantalla</string>
+	<string name="accion_primer_control">Ir al primer control de lectura</string>
+	<string name="accion_tocar_elemento">Tocar lo enfocado con un toque de verdad</string>
+	<string name="accion_decir_posicion">Decir dónde está lo enfocado</string>
+	<string name="accion_bloquear_toques">Bloquear o desbloquear los toques</string>
+	<string name="botones_confirmar">aceptar, ok, vale, sí, si, confirmar, guardar, hecho, listo, enviar, continuar, siguiente, permitir, de acuerdo, aplicar, terminar, yes, done, save, send, continue, next, allow, apply, confirm, finish</string>
+	<string name="botones_cancelar">cancelar, no, cerrar, descartar, atrás, volver, rechazar, ahora no, no permitir, salir, cancel, close, dismiss, back, deny, not now, don\'t allow, exit</string>
+	<string name="sin_boton_confirmar">No hay ningún botón de aceptar</string>
+	<string name="sin_boton_cancelar">No hay ningún botón de cancelar</string>
+	<string name="posicion_arriba">Arriba</string>
+	<string name="posicion_en_medio">En medio</string>
+	<string name="posicion_abajo">Abajo</string>
+	<string name="posicion_izquierda">a la izquierda</string>
+	<string name="posicion_centro">en el centro</string>
+	<string name="posicion_derecha">a la derecha</string>
+	<string name="posicion_elemento">%1$s %2$s. Ocupa el %3$d %% del ancho y el %4$d %% del alto</string>
+	<string name="toques_bloqueados">Toques bloqueados. Repite la orden para desbloquearlos</string>
+	<string name="toques_desbloqueados">Toques desbloqueados</string>
+	<string name="aj_decir_posicion_desplazar">Decir dónde se queda la lista al desplazarla</string>
+	<string name="aj_decir_posicion_desplazar_res">Tras desplazar con una orden, dice la página o los elementos que se ven, como «Elementos 11 a 20 de 54»</string>
+	<string name="lect_pagina_de">Página %1$d de %2$d</string>
+	<string name="lect_elementos_de">Elementos %1$d a %2$d de %3$d</string>
+	<string name="gesto_agitar">Agitar el móvil</string>
+	<string name="aj_agitar_sensibilidad">Sensibilidad al agitar el móvil</string>
+	<string-array name="agitar_sensibilidad_nombres">
+		<item>Baja (hay que agitarlo fuerte)</item>
+		<item>Media</item>
+		<item>Alta</item>
+	</string-array>
+	<string-array name="agitar_sensibilidad_valores" translatable="false">
+		<item>baja</item>
+		<item>media</item>
+		<item>alta</item>
+	</string-array>
+</resources>

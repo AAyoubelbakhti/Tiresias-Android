@@ -72,6 +72,12 @@ class Ajustes(contexto: Context) {
 	/** Si se detecta el idioma de los textos largos que la app no marca (español o inglés). */
 	val detectarIdioma: Boolean get() = logico(Claves.DETECTAR_IDIOMA, true)
 
+	/**
+	 * La voz que da «Voces de Tiresias» a otras apps y a otros lectores cuando no eligen una: [MOTOR_OTRAS_IGUAL] (la
+	 * misma que usa Tiresias), «espeak», «eloquence», «pico» o «piper» (la voz neuronal descargada del idioma).
+	 */
+	val motorOtrasApps: String get() = cadena("motor_otras_apps", MOTOR_OTRAS_IGUAL)
+
 	/** La voz de las notificaciones (una de las incluidas), o "" para la de siempre. */
 	val motorAvisos: String get() = cadena(Claves.MOTOR_AVISOS, "")
 
@@ -205,6 +211,7 @@ class Ajustes(contexto: Context) {
 			mayusculas = enumDe(cadena(Claves.MAYUSCULAS, ModoMayusculas.TONO.name), ModoMayusculas.TONO),
 			repetidos = entero(Claves.REPETIDOS, 4),
 			emojis = modoEmojis,
+			simbolosSentido = logico(Claves.SIMBOLOS_SENTIDO, false),
 		)
 
 	var puntuacion: NivelPuntuacion
@@ -421,6 +428,20 @@ class Ajustes(contexto: Context) {
 	val vozSilencioInicio: Boolean get() = logico(Claves.VOZ_SILENCIO_INICIO, false)
 	/** Decir al enchufar y desenchufar el cargador y cuando la batería está llena. */
 	val avisosCargador: Boolean get() = logico(Claves.AVISOS_CARGADOR, false)
+	/** El nivel de la batería con la pantalla encendida: "no", cada "5" o "10" por ciento, o cada "15min", "30min" o "60min" (SandFly). */
+	val avisoNivelBateria: String get() = cadena(Claves.AVISO_NIVEL_BATERIA, "no")
+	/** Al encender la pantalla sin cargar, avisar de la batería por debajo de este tanto por ciento (0: nunca). */
+	val bateriaBaja: Int get() = cadena(Claves.BATERIA_BAJA, "15").toIntOrNull() ?: 0
+	/** Decir lo que ha durado una llamada de teléfono al colgar (Android 12 o posterior). */
+	val duracionLlamada: Boolean get() = logico(Claves.DURACION_LLAMADA, false)
+	/** «Pantalla apagada» y el aviso al desbloquear también mientras suena música o un vídeo. */
+	val avisosPantallaConMultimedia: Boolean get() = logico(Claves.AVISOS_PANTALLA_CON_MULTIMEDIA, true)
+	/** El grosor del recuadro del foco: "sistema", "grueso" o "muy_grueso" (Android 12 o posterior). */
+	val recuadroGrosor: String get() = cadena(Claves.RECUADRO_GROSOR, "sistema")
+	/** El color del recuadro del foco: "sistema" o un color de la lista (Android 12 o posterior). */
+	val recuadroColor: String get() = cadena(Claves.RECUADRO_COLOR, "sistema")
+	/** Sin las animaciones del móvil mientras Tiresias está activo (Android 13 o posterior). */
+	val sinAnimaciones: Boolean get() = logico(Claves.SIN_ANIMACIONES, false)
 	/** Al encender con el móvil bloqueado, unos segundos sin lo que dice solo la pantalla de bloqueo (Backtalk 312). */
 	val soloLoElegidoAlEncender: Boolean get() = logico(Claves.SOLO_LO_ELEGIDO_AL_ENCENDER, false)
 
@@ -501,6 +522,9 @@ class Ajustes(contexto: Context) {
 
 	/** En el modo senior, un toque sobre lo que se acaba de decir lo activa (para quien no domina el doble toque). */
 	val seniorToqueActiva: Boolean get() = logico(Claves.SENIOR_TOQUE_ACTIVA, false)
+
+	/** Un toque abre lo que se acaba de decir: en el modo senior (su ajuste) o para todos (Ajustes, Navegación; Backtalk). */
+	val toqueActiva: Boolean get() = (modoSenior && seniorToqueActiva) || logico("toque_activa", false)
 
 	/** El teléfono al que se pide ayuda (SOS). */
 	var seniorContactoAyuda: String
@@ -595,6 +619,15 @@ class Ajustes(contexto: Context) {
 
 	/** Con el control predeterminado, arriba y abajo eligen las acciones propias del elemento (y el doble toque hace la elegida). */
 	val accionesArribaAbajo: Boolean get() = logico(Claves.ACCIONES_ARRIBA_ABAJO, true)
+
+	/** Lo fuerte que hay que agitar el móvil para el gesto de agitar: «baja», «media» o «alta» sensibilidad. */
+	val agitarSensibilidad: String get() = cadena("agitar_sensibilidad", "media")
+
+	/** Al desplazar con una orden, decir la página o los elementos que se ven («Elementos 11 a 20 de 54»). */
+	val decirPosicionDesplazar: Boolean get() = logico("decir_posicion_desplazar", true)
+
+	/** Al llegar a un elemento con acciones, el selector se pone solo en Acciones (y vuelve al salir). */
+	val accionesSolas: Boolean get() = logico("acciones_solas", true)
 
 	/** Leer lo que se toca de inmediato (sin esperar a que el dedo se pare). */
 	val retardoExploracion: Long get() = entero(Claves.RETARDO_EXPLORACION, 0).toLong()
@@ -807,6 +840,8 @@ class Ajustes(contexto: Context) {
 		const val MOTOR_ESPEAK = "tiresias:espeak"
 		const val MOTOR_PICO = "tiresias:pico"
 		const val MOTOR_ELOQUENCE = "tiresias:eloquence"
+		/** «Voz para otras apps»: la misma que usa Tiresias. */
+		const val MOTOR_OTRAS_IGUAL = "igual"
 		/** El motor que esté elegido en los ajustes del móvil, sea cual sea (si se cambia allí, Tiresias lo sigue). */
 		const val MOTOR_DEL_SISTEMA = "tiresias:sistema"
 
@@ -1084,4 +1119,14 @@ object Claves {
 	const val AYUDA_CONTACTO2 = "ayuda_contacto2"
 	const val AYUDA_NOMBRE2 = "ayuda_nombre2"
 	const val AYUDA_HISTORIAL = "ayuda_historial"
+	const val AVISO_NIVEL_BATERIA = "aviso_nivel_bateria"
+	const val BATERIA_BAJA = "bateria_baja"
+	const val DURACION_LLAMADA = "duracion_llamada"
+	const val AVISOS_PANTALLA_CON_MULTIMEDIA = "avisos_pantalla_con_multimedia"
+	const val RECUADRO_GROSOR = "recuadro_grosor"
+	const val RECUADRO_COLOR = "recuadro_color"
+	const val SIN_ANIMACIONES = "sin_animaciones"
+	/** La escala de las animaciones que había antes de quitarlas Tiresias (para devolverla; es de este móvil). */
+	const val ANIMACIONES_ANTES = "animaciones_antes"
+	const val SIMBOLOS_SENTIDO = "simbolos_sentido"
 }
