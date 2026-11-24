@@ -60,4 +60,6 @@
 		<item>Medium</item>
 		<item>High</item>
 	</string-array>
+	<string name="aj_numeros_al_levantar">Dial numbers when you lift your finger</string>
+	<string name="aj_numeros_al_levantar_res">On the Phone dial pad and the lock screen PIN pad, explore to the number and lift your finger to enter it. If you turn it off, numbers are entered with a double tap</string>
 </resources>

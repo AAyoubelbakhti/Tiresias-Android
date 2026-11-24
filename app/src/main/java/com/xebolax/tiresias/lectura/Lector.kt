@@ -453,6 +453,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 			AccessibilityEvent.TYPE_VIEW_SCROLLED -> alDesplazar(e)
 			// (pulsar o seleccionar algo puede cambiar lo que hay sin que la app avise de otro modo: una sección que se abre)
 			AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+				ultimoClic = e.source
+				clicEn = SystemClock.uptimeMillis()
 				navegador.invalidar(e.windowId)
 				alPulsar(e)
 			}
@@ -524,6 +526,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 	 */
 	private fun alLevantarDedo() {
 		val tecla = teclaExplorada
+		val numerica = teclaNumerica
+		teclaNumerica = false
 		val explorado = ultimoExplorado
 		val focoTocado = focoAlTocar
 		focoAlTocar = null
@@ -541,6 +545,23 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		}
 		teclaExplorada = null
 		ultimoExplorado = null
+		// El teclado numérico de Teléfono y del PIN: la app lo marca ella al levantar el dedo con los otros lectores, y con
+		// Tiresias no llegaba a hacerlo (zeoltan, incidencia 3 de GitHub). Se espera más que en un teclado (lo que tarda
+		// Android en dar el dedo por levantado) y, si la app ya escribió el número, no se pulsa otra vez
+		if (tecla != null && numerica && Nodos.vivo(tecla)) {
+			val desde = inicioToque
+			manejador.postDelayed({
+				// (por el aviso de pulsación de esa misma tecla: el texto no sirve, el teclado del PIN avisa dos veces de cada
+				// número y el segundo aviso llega tarde, dentro del toque siguiente)
+				val laMarcoLaApp = clicEn >= desde && clicEn > 0 && ultimoClic == tecla
+				if (com.xebolax.tiresias.BuildConfig.PRUEBAS) android.util.Log.d("TiresiasEscritura", "Fin del toque en una tecla numérica: la marcó la app=$laMarcoLaApp")
+				if (!laMarcoLaApp && Nodos.vivo(tecla)) {
+					sonidos.tocar(Sonido.TECLA)
+					pulsar(tecla)
+				}
+			}, ESPERA_TECLA_NUMERICA_MS)
+			return
+		}
 		if (tecla != null && (ajustes.escribirAlLevantar || ajustes.escrituraRapida) && Nodos.vivo(tecla)) {
 			// El teclado de Google (y el de Android) escriben ellos solos la tecla sobre la que se levanta el dedo, y el
 			// cambio del texto llega unos 70 ms después del fin del toque: se espera un poco y, si el texto ha cambiado
@@ -571,6 +592,13 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		sonidos.tocar(Sonido.ACTIVAR)
 		pulsar(explorado)
 	}
+
+	/** Lo último que la app dijo que se pulsó, y cuándo (para no marcar dos veces un número que ya marcó la app). */
+	private var ultimoClic: AccessibilityNodeInfo? = null
+	private var clicEn = 0L
+
+	/** Si la tecla explorada es del teclado numérico de Teléfono o del PIN (no de un teclado en pantalla). */
+	private var teclaNumerica = false
 
 	/** Si ha llegado el fin del toque anterior (para no perder una tecla con la escritura rápida). */
 	private var finDeToqueLlego = true
@@ -929,6 +957,9 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		ultimoExplorado = destino
 		// Las teclas del teclado en pantalla: se apunta la última que se toca
 		teclaExplorada = if (runCatching { destino.window?.type }.getOrNull() == AccessibilityWindowInfo.TYPE_INPUT_METHOD) destino else null
+		// Y las del teclado numérico de Teléfono y del PIN de la pantalla de bloqueo, si se marcan al levantar el dedo
+		teclaNumerica = teclaExplorada == null && ajustes.numerosAlLevantar && Nodos.esTeclaNumerica(destino)
+		if (teclaNumerica) teclaExplorada = destino
 		val primeroDelToque = !dichoEnEsteToque
 		dichoEnEsteToque = true
 		if (destino == foco) {
@@ -2501,6 +2532,8 @@ class Lector(val servicio: AccessibilityService, val voz: Voz, val sonidos: Soni
 		private const val TOQUE_CORTO_MS = 350L
 		/** Lo que se espera al escribir al levantar el dedo, a ver si el teclado escribe él solo la tecla. */
 		private const val ESPERA_TECLA_PROPIA_MS = 180L
+		/** Lo que se espera a que la app marque ella el número al levantar el dedo (tras la espera del doble toque). */
+		private const val ESPERA_TECLA_NUMERICA_MS = 450L
 		/** Lo que se espera tras un toque por si llega el segundo de un doble toque. */
 		private const val ESPERA_DOBLE_TOQUE_MS = 400L
 

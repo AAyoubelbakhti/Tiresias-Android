@@ -355,6 +355,9 @@ class Ajustes(contexto: Context) {
 	/** En el teclado en pantalla, la tecla se escribe al levantar el dedo (sin doble toque). */
 	val escribirAlLevantar: Boolean get() = logico(Claves.ESCRIBIR_AL_LEVANTAR, false)
 
+	/** El teclado numérico de Teléfono y del PIN de la pantalla de bloqueo marca al levantar el dedo (si no, con doble toque). */
+	val numerosAlLevantar: Boolean get() = logico("numeros_al_levantar", true)
+
 	/** Un sonido cada pocos segundos mientras la IA piensa o se reconoce el texto. */
 	val sonidoEspera: Boolean get() = logico(Claves.SONIDO_ESPERA, true)
 

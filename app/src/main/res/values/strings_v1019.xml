@@ -72,4 +72,6 @@
 		<item>media</item>
 		<item>alta</item>
 	</string-array>
+	<string name="aj_numeros_al_levantar">Marcar los números al levantar el dedo</string>
+	<string name="aj_numeros_al_levantar_res">En el teclado de Teléfono y en el del PIN de la pantalla de bloqueo, explora hasta el número y levanta el dedo para marcarlo. Si lo quitas, se marca con doble toque</string>
 </resources>

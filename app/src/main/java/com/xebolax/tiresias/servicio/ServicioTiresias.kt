@@ -931,13 +931,18 @@ class ServicioTiresias : AccessibilityService() {
 		}
 	}
 
-	fun decirDesdeApp(texto: String, interrumpir: Boolean) {
+	/**
+	 * Dice lo que manda otra app. [velocidad] y [tono] son relativos a los del usuario (100). [comoTeclado]: lo manda el
+	 * teclado puesto, que habla como el eco de lo que se escribe (también con el móvil bloqueado).
+	 */
+	fun decirDesdeApp(texto: String, interrumpir: Boolean, velocidad: Int = 100, tono: Int = 100, comoTeclado: Boolean = false) {
 		val l = lector ?: return
 		l.manejador.post {
 			// Lo que manda otra app no se dice con el móvil bloqueado y sin usar si así se ha pedido para las
 			// notificaciones (callar con el móvil bloqueado o en silencio): como los anuncios de las apps (SandFly 30ddb1f3e)
-			if (l.motivoCallarSinPedir() != null) return@post
-			l.voz.decir(Enunciado(texto, if (interrumpir) Modo.INTERRUMPIR else Modo.ENCOLAR, Tipo.ANUNCIO))
+			if (!comoTeclado && l.motivoCallarSinPedir() != null) return@post
+			l.voz.decir(Enunciado(texto, if (interrumpir) Modo.INTERRUMPIR else Modo.ENCOLAR, if (comoTeclado) Tipo.ESCRITURA else Tipo.ANUNCIO,
+				tono = tono, velocidad = velocidad))
 			if (l.brailleListo) l.braille.mensaje(texto)
 		}
 	}

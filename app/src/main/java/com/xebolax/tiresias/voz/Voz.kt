@@ -595,6 +595,9 @@ class Voz(contexto: Context) {
 
 	private fun pedirFoco() {
 		if (!ajustes.atenuar || Build.VERSION.SDK_INT < 26 || foco != null) return
+		// Con otra app grabando (el dictado de Google, una nota de voz), pedir el foco de audio la corta: el dictado de
+		// Gboard se paraba al momento con «No te entiendo» y su sonido de error (zeoltan, incidencia 3 de GitHub)
+		if (grabando) return
 		// Con un asistente hablando (Gemini) o una llamada por internet, pedir el foco los corta: se habla encima
 		val delicado = runCatching {
 			audio.activePlaybackConfigurations.any {
@@ -649,6 +652,8 @@ class Voz(contexto: Context) {
 			val cb = object : AudioManager.AudioRecordingCallback() {
 				override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
 					grabando = hayGrabacion(configs)
+					// Al empezar a grabar otra app, se le devuelve el foco de audio si Tiresias lo tenía
+					if (grabando) soltarFoco()
 				}
 			}
 			audio.registerAudioRecordingCallback(cb, principal)

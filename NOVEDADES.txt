@@ -1,3 +1,7 @@
+== 1.0.20
+- Teclado de Teléfono y teclado del PIN de la pantalla de bloqueo: los números se marcan al levantar el dedo, sin doble toque. Se puede volver al doble toque quitando «Marcar los números al levantar el dedo» en Ajustes, Teclado.
+- El dictado por voz del teclado de Google ya no se corta al empezar con «No te entiendo»: mientras otra app escucha por el micrófono, Tiresias no le quita el audio.
+- Los teclados y los juegos hechos para hablar por otros lectores de Android ya hablan también por Tiresias, y pueden pedir el toque directo. El teclado que tienes puesto habla sin preguntarte, porque ya ve lo que escribes con él, y si dice él las teclas, Tiresias no las repite. Las demás apps necesitan tu permiso, como siempre. Para desarrolladores: docs/api.md.
 == 1.0.19
 - Recorrer bien todas las apps: Tiresias decide de otra forma qué es cada parada al deslizar, con una sola regla para deslizar, para lo que se lee y para lo que se enfoca al tocar, y sin límite de profundidad. Así:
   - Los botones que van dentro de una tarjeta o una fila que también se pulsa («Me gusta», «Comentar», «Responder») son su propia parada y se pueden pulsar. Antes se leían dentro de la tarjeta y no se llegaba a ellos.

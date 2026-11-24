@@ -154,8 +154,33 @@ class GestosTiresias(private val lector: Lector) {
 	private fun pideToqueDirecto(paquete: String): Boolean = pidenToqueDirecto.getOrPut(paquete) {
 		runCatching {
 			val info = servicio.packageManager.getApplicationInfo(paquete, android.content.pm.PackageManager.GET_META_DATA)
-			info.metaData?.containsKey("dev.nvgt.capability.DIRECT_TOUCH") == true
+			info.metaData?.containsKey("dev.nvgt.capability.DIRECT_TOUCH") == true || pantallaDeclarada(info)
 		}.getOrDefault(false)
+	}
+
+	/**
+	 * Si la app declara el toque directo en la pantalla entera con la declaración que comparten otros lectores
+	 * (`fyi.quin.backtalk.direct_touch`, un XML con `<direct-touch>`): un `<screen>` sin actividad ni estado. Las zonas
+	 * por vista y las reglas por actividad o estado no se usan (para eso está la interfaz de toque directo).
+	 */
+	private fun pantallaDeclarada(info: android.content.pm.ApplicationInfo): Boolean {
+		val id = info.metaData?.getInt("fyi.quin.backtalk.direct_touch", 0) ?: 0
+		if (id == 0) return false
+		val recursos = servicio.packageManager.getResourcesForApplication(info)
+		val xml = recursos.getXml(id)
+		try {
+			var vistos = 0
+			while (xml.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT && vistos < 200) {
+				if (xml.eventType != org.xmlpull.v1.XmlPullParser.START_TAG) continue
+				vistos++
+				if (xml.name != "screen") continue
+				val condiciones = (0 until xml.attributeCount).map { xml.getAttributeName(it) }
+				if ("activity" !in condiciones && "state" !in condiciones) return true
+			}
+		} finally {
+			xml.close()
+		}
+		return false
 	}
 
 	/** La app de delante y las zonas que las apps han marcado para el toque directo (con la API). */

@@ -212,6 +212,8 @@ class EdicionTexto(private val lector: Lector) {
 			?.substringBefore('/') ?: return false
 		// El teclado braille de Tiresias dice él mismo cada letra (cortando la anterior): repetirla la pisaría
 		if (actual == lector.servicio.packageName) return true
+		// Un teclado que ha dicho que habla él (por la interfaz de voz compatible), mientras siga puesto
+		if (com.xebolax.tiresias.api.VozDeApps.tecladoHablaSolo(lector.servicio, actual)) return true
 		return actual in lector.ajustes.tecladosQueHablan
 	}
 

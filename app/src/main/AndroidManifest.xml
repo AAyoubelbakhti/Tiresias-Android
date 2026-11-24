@@ -235,6 +235,34 @@
 			</intent-filter>
 		</service>
 
+		<!-- Las interfaces de voz y de toque directo compatibles con las de otros lectores (docs/api.md): exportadas a
+		     propósito; el teclado puesto habla sin permiso, las demás apps necesitan el del usuario -->
+		<service
+			android:name=".api.ServicioVozCompatible"
+			android:exported="true"
+			tools:ignore="ExportedService">
+			<intent-filter>
+				<action android:name="fyi.quin.backtalk.action.SPEECH_CONTROL" />
+			</intent-filter>
+		</service>
+		<service
+			android:name=".api.ServicioToqueCompatible"
+			android:exported="true"
+			tools:ignore="ExportedService">
+			<intent-filter>
+				<action android:name="fyi.quin.backtalk.action.DIRECT_TOUCH" />
+			</intent-filter>
+		</service>
+		<receiver
+			android:name=".api.ReceptorVozCompatible"
+			android:exported="true"
+			tools:ignore="ExportedReceiver">
+			<intent-filter>
+				<action android:name="fyi.quin.backtalk.action.SPEAK" />
+				<action android:name="fyi.quin.backtalk.action.STOP_SPEECH" />
+			</intent-filter>
+		</receiver>
+
 		<!-- Tor para la ayuda remota, solo mientras dura y en su propio proceso: si falla, el lector sigue hablando -->
 		<service
 			android:name="org.torproject.jni.TorService"

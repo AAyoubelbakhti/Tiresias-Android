@@ -710,6 +710,25 @@ object Nodos {
 		return id.endsWith(":id/quoted_message_holder") && (id.startsWith("com.whatsapp"))
 	}
 
+	/**
+	 * Una tecla del teclado numérico de una app de teléfono (Teléfono de Google, el de AOSP, Samsung, Xiaomi...) o del PIN
+	 * de la pantalla de bloqueo: por su identificador (`key0`…`key9` de SystemUI; `one`…`nine`, `zero`, `star`, `pound`
+	 * de los marcadores) o por la clase de la vista. Esas apps las marcan solas al levantar el dedo cuando hay un lector.
+	 */
+	fun esTeclaNumerica(n: AccessibilityNodeInfo): Boolean {
+		val clase = n.className?.toString().orEmpty()
+		if (clase.endsWith("DialpadKeyButton") || clase.endsWith("NumPadKey")) return true
+		val id = n.viewIdResourceName ?: return false
+		val corto = id.substringAfter(":id/", "")
+		val paquete = id.substringBefore(":id/").lowercase()
+		if (paquete == "com.android.systemui" && TECLA_PIN.matches(corto)) return true
+		val deTelefono = paquete.contains("dialer") || paquete.contains("contacts") || paquete.contains("phone") || paquete.contains("incallui")
+		return deTelefono && (corto in TECLAS_MARCADOR || TECLA_PIN.matches(corto))
+	}
+
+	private val TECLA_PIN = Regex("key[0-9]|key_enter|delete_button")
+	private val TECLAS_MARCADOR = setOf("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "zero", "star", "pound")
+
 	/** «Leer más», «Ver más», «Read more»...: lo que abre el resto de un mensaje o de un texto largo. */
 	val LEER_MAS = Regex("(?i)[.…\\s]*(leer|ver|mostrar|read|see|show|lire|mehr|leggi) ?(más|mas|more|la suite|anzeigen|altro)\\.*…?")
 

@@ -37,8 +37,8 @@ android {
 		// versión posterior (gestos de varios dedos, capturas, braille HID...) se comprueba al usarlo.
 		minSdk = 24
 		targetSdk = 37
-		versionCode = 21
-		versionName = "1.0.19"
+		versionCode = 22
+		versionName = "1.0.20"
 
 		buildConfigField("String", "URL_ACTUALIZACIONES", "\"$urlActualizaciones\"")
 		buildConfigField("String", "REPO_GITHUB", "\"$repoGithub\"")
@@ -126,6 +126,9 @@ android {
 
 	buildFeatures {
 		buildConfig = true
+		// Las interfaces de voz y de toque directo que comparten otros lectores (fyi.quin.backtalk.*), para que un
+		// teclado o un juego hecho para ellos funcione también con Tiresias
+		aidl = true
 	}
 
 	// Las cadenas de los ayudantes de accesibilidad son las mismas en el escritorio
